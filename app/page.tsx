@@ -46,11 +46,23 @@ const columns: ColumnDef<Task>[] = [
     cell: ({ row }) => {
       const due = row.getValue<string>("due");
       if (!due) return "-";
-      return new Date(due).toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
+      const date = new Date(due);
+      // Check if date is valid before formatting
+      if (isNaN(date.getTime())) return "Invalid date";
+      
+      return date.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
       });
+    },
+    filterFn: (row, id, value) => {
+      const due = row.getValue<string>(id);
+      if (!due) return false;
+      const date = new Date(due);
+      return date >= new Date(value);
     },
   },
   {
@@ -64,12 +76,19 @@ const columns: ColumnDef<Task>[] = [
           {tags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10"
+              className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 dark:bg-blue-900 dark:text-blue-200"
             >
               {tag}
             </span>
           ))}
         </div>
+      );
+    },
+    filterFn: (row, id, value) => {
+      const tags = row.getValue<string[]>(id);
+      if (!tags?.length) return false;
+      return tags.some(tag => 
+        tag.toLowerCase().includes(value.toLowerCase())
       );
     },
   },
