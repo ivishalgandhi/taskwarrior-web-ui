@@ -1,22 +1,13 @@
-import { exec } from 'child_process';
 import { NextResponse } from 'next/server';
-
-// Helper to execute TaskWarrior commands
-const execTask = (cmd: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    exec(`task ${cmd}`, (error, stdout, stderr) => {
-      if (error) reject(error);
-      resolve(stdout);
-    });
-  });
-};
+import { execTask } from '../utils/taskwarrior';
 
 export async function GET() {
   try {
     const tasks = await execTask('export');
     return NextResponse.json(JSON.parse(tasks));
   } catch (error) {
-    return NextResponse.json({ error }, { status: 500 });
+    console.error('Error fetching tasks:', error);
+    return NextResponse.json({ error: 'Failed to fetch tasks' }, { status: 500 });
   }
 }
 
@@ -32,6 +23,7 @@ export async function POST(request: Request) {
     const result = await execTask(cmd);
     return NextResponse.json({ success: true, result });
   } catch (error) {
-    return NextResponse.json({ error }, { status: 500 });
+    console.error('Error adding task:', error);
+    return NextResponse.json({ error: 'Failed to add task' }, { status: 500 });
   }
 }
