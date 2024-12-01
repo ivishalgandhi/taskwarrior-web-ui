@@ -8,6 +8,8 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card"
+import { TaskEditDialog } from "./task-edit-dialog"
+import { Task } from "@/types/task"
 
 interface CommandInputProps {
   onCommandExecuted: () => void
@@ -17,6 +19,8 @@ export function CommandInput({ onCommandExecuted }: CommandInputProps) {
   const [command, setCommand] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [output, setOutput] = useState<string | null>(null)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [newTask, setNewTask] = useState<Task | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,14 +42,38 @@ export function CommandInput({ onCommandExecuted }: CommandInputProps) {
       }
 
       const result = await response.json()
-      toast.success("Command executed successfully")
+      
+      // Check if command starts with 'add' or 'task add'
+      const isAddCommand = command.trim().toLowerCase().startsWith('add') || 
+                          command.trim().toLowerCase().startsWith('task add')
+      
+      if (isAddCommand && result.task) {
+        setNewTask(result.task)
+        const taskDescription = command.trim().replace(/^(task\s+)?add\s+/i, '')
+        toast.success("Task has been created", {
+          description: taskDescription,
+          action: {
+            label: "View",
+            onClick: () => setShowEditDialog(true),
+          },
+        })
+      } else {
+        toast.success("Command executed successfully", {
+          description: command.trim(),
+        })
+      }
+
       if (result.output) {
         setOutput(result.output)
       }
       
+      // Clear command after successful execution
+      setCommand("")
       onCommandExecuted()
     } catch (error) {
-      toast.error("Failed to execute command")
+      toast.error("Failed to execute command", {
+        description: "Please check your command and try again",
+      })
       console.error("Error executing command:", error)
     } finally {
       setIsLoading(false)
@@ -67,10 +95,18 @@ export function CommandInput({ onCommandExecuted }: CommandInputProps) {
       </form>
       {output && (
         <Card>
-          <CardContent className="p-4">
-            <pre className="whitespace-pre-wrap font-mono text-sm">{output}</pre>
+          <CardContent className="pt-6">
+            <pre className="whitespace-pre-wrap">{output}</pre>
           </CardContent>
         </Card>
+      )}
+      {newTask && (
+        <TaskEditDialog
+          task={newTask}
+          open={showEditDialog}
+          onOpenChange={setShowEditDialog}
+          onTaskUpdated={onCommandExecuted}
+        />
       )}
     </div>
   )

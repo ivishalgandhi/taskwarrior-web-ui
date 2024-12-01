@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execTask } from '../utils/taskwarrior';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     console.log('[Server] Starting task export...');
     
@@ -21,6 +21,11 @@ export async function GET() {
       console.error('[Server] Error listing tasks:', e);
     }
     
+    // Get the URL parameters
+    const { searchParams } = new URL(request.url);
+    const includeCompleted = searchParams.get('includeCompleted') === 'true';
+    console.log('[Server] Include completed tasks:', includeCompleted);
+    
     // Now try export
     const tasks = await execTask('export');
     console.log('[Server] Raw export output:', tasks);
@@ -30,12 +35,19 @@ export async function GET() {
       return NextResponse.json([]);
     }
     
-    const parsedTasks = JSON.parse(tasks);
-    console.log('[Server] Number of tasks found:', parsedTasks.length);
+    const allTasks = JSON.parse(tasks);
+    console.log('[Server] Number of tasks found:', allTasks.length);
     
-    return NextResponse.json(parsedTasks);
+    // Filter out completed tasks unless explicitly requested
+    const filteredTasks = includeCompleted 
+      ? allTasks
+      : allTasks.filter((task: any) => task.status !== 'completed');
+    
+    console.log('[Server] Number of tasks after filtering:', filteredTasks.length);
+    
+    return NextResponse.json(filteredTasks);
   } catch (error) {
-    console.error('[Server] Error in GET /api/tasks:', error);
+    console.error('Error fetching tasks:', error);
     return NextResponse.json({ error: 'Failed to fetch tasks' }, { status: 500 });
   }
 }

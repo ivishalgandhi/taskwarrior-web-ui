@@ -16,6 +16,7 @@ function buildProjectTree(projects: { project: string; count: number }[]): Proje
     return [];
   }
 
+  // First pass: create nodes and set initial counts
   projects.forEach(({ project, count }) => {
     if (!project) return;
 
@@ -24,20 +25,39 @@ function buildProjectTree(projects: { project: string; count: number }[]): Proje
     let currentPath = '';
 
     parts.forEach((part, index) => {
-      if (!part) return;
-
       currentPath = currentPath ? `${currentPath}.${part}` : part;
 
       if (!current[part]) {
         current[part] = {
-          name: part,
+          name: currentPath, // Use full path as name
           fullPath: currentPath,
-          tasks: count,
+          tasks: 0,
           children: {}
         };
       }
+
+      // Only add count to the leaf node
+      if (index === parts.length - 1) {
+        current[part].tasks = count;
+      }
+      
       current = current[part].children;
     });
+  });
+
+  // Second pass: aggregate counts up the tree
+  function aggregateCounts(node: ProjectNode): number {
+    let total = node.tasks;
+    for (const child of Object.values(node.children)) {
+      total += aggregateCounts(child);
+    }
+    node.tasks = total;
+    return total;
+  }
+
+  // Aggregate counts for each root node
+  Object.values(root).forEach(node => {
+    aggregateCounts(node);
   });
 
   return Object.values(root);
