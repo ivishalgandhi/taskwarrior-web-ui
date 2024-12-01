@@ -1,67 +1,42 @@
-import { NextResponse } from "next/server"
-import { execTask } from "../../utils/taskwarrior"
+import { NextRequest, NextResponse } from 'next/server';
+import { execSync } from 'child_process';
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { uuid, description, priority, project, due, tags } = await request.json()
+    const data = await req.json();
+    const { uuid, updates } = data;
 
-    // Build the task modification command
-    let cmd = `modify ${uuid}`
+    if (!uuid) {
+      return NextResponse.json({ error: 'Task UUID is required' }, { status: 400 });
+    }
+
+    // Build the modification command
+    let modifyCommand = `task uuid:${uuid} modify`;
     
-    // Add description if provided
-    if (description) {
-      cmd += ` description:"${description}"`
-    }
-
-    // Add priority if provided
-    if (priority && priority !== "none") {
-      cmd += ` priority:${priority}`
-    } else {
-      // If priority is none or empty string, remove priority
-      cmd += ` priority:`
-    }
-
-    // Add project if provided
-    if (project) {
-      cmd += ` project:"${project}"`
-    } else {
-      // If project is empty string, remove project
-      cmd += ` project:`
-    }
-
-    // Add due date if provided
-    if (due) {
-      // Convert from datetime-local format (YYYY-MM-DDTHH:mm) to Taskwarrior format
-      const dueDate = new Date(due)
-      const taskwarriorDate = dueDate.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")
-      cmd += ` due:${taskwarriorDate}`
-    } else {
-      // If due is empty string, remove due date
-      cmd += ` due:`
-    }
-
-    // Handle tags
-    if (Array.isArray(tags)) {
-      // Remove all existing tags first
-      cmd += ` -ALLTAGREMOVED`
-      // Add new tags
-      tags.forEach(tag => {
-        cmd += ` +${tag}`
-      })
-    }
+    // Add each update to the command
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null) {
+        modifyCommand += ` ${key}:`; // Remove the field
+      } else if (key === 'due') {
+        // Format date as YYYY-MM-DD
+        const date = new Date(value as string);
+        const formattedDate = date.toISOString().split('T')[0];
+        modifyCommand += ` due:${formattedDate}`;
+      } else {
+        modifyCommand += ` ${key}:${value}`;
+      }
+    });
 
     // Execute the command
-    const result = await execTask(cmd)
+    execSync(modifyCommand);
 
-    return NextResponse.json({ 
-      message: "Task updated successfully",
-      info: result
-    })
+    // Return success response
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error modifying task:", error)
+    console.error('Error updating task:', error);
     return NextResponse.json(
-      { error: "Failed to modify task" },
+      { error: 'Failed to update task' },
       { status: 500 }
-    )
+    );
   }
 }

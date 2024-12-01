@@ -1,108 +1,411 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { Task } from "@/types/task";
-import { ColumnDef } from "@tanstack/react-table";
-import { Button } from "@/components/ui/button";
-import { ArrowUpDown, AlertCircle, CheckCircle, Clock, Timer } from "lucide-react";
-import { DataTableRowActions } from "@/components/data-table-row-actions";
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Task } from '@/types/task';
 import { DataTable } from "@/components/data-table";
+import { ColumnDef, ColumnFiltersState } from "@tanstack/react-table";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { DataTableColumnHeader } from "@/components/data-table-column-header";
 import { FolderIcon } from "@/components/icons/folder-icon";
-import { CommandInput } from "@/components/command-input"; // Import the CommandInput component
+import { CommandInput } from "@/components/command-input";
+import { CalendarView } from '@/components/calendar-view';
+import { DataTableRowActions } from "@/components/data-table-row-actions";
+import { DataTableToolbar } from "@/components/data-table-toolbar"; 
+import { Input } from "@/components/ui/input"; 
+import { Cross2Icon } from "@radix-ui/react-icons"; 
+import { DataTableFacetedFilter } from "@/components/data-table-faceted-filter"; 
+import { DataTableViewOptions } from "@/components/data-table-view-options"; 
+import { Clock, CheckCircle, Timer, AlertCircle } from "lucide-react";
+import { useReactTable, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, getFacetedRowModel, getFacetedUniqueValues } from '@tanstack/react-table'
 
 interface ProjectNode {
   name: string;
-  tasks: number;
-  children: { [key: string]: ProjectNode };
-  fullPath: string;
+  count: number;
+  children: ProjectNode[];
 }
-
-// Helper function to format urgency
-const formatUrgency = (urgency: number | undefined) => {
-  if (urgency === undefined) return "";
-  return urgency.toFixed(2);
-};
-
-// Helper function to format date
-const formatDate = (date: string | undefined) => {
-  if (!date) return "";
-  
-  try {
-    // Convert Taskwarrior format (20240514T025828Z) to ISO format (2024-05-14T02:58:28Z)
-    const isoDate = date.replace(
-      /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/,
-      '$1-$2-$3T$4:$5:$6Z'
-    );
-    
-    const now = new Date();
-    const taskDate = new Date(isoDate);
-    
-    if (isNaN(taskDate.getTime())) return "";
-    
-    const diffInMonths = (now.getFullYear() - taskDate.getFullYear()) * 12 + 
-                        (now.getMonth() - taskDate.getMonth());
-    
-    if (diffInMonths === 0) {
-      const diffInDays = Math.floor((now.getTime() - taskDate.getTime()) / (1000 * 60 * 60 * 24));
-      if (diffInDays === 0) return "today";
-      if (diffInDays === 1) return "yesterday";
-      if (diffInDays < 7) return `${diffInDays}d`;
-      if (diffInDays < 14) return "1wk";
-      if (diffInDays < 21) return "2wk";
-      if (diffInDays < 28) return "3wk";
-      return "4wk";
-    } else if (diffInMonths < 12) {
-      return `${diffInMonths}mo`;
-    } else {
-      const years = Math.floor(diffInMonths / 12);
-      return `${years}y`;
-    }
-  } catch (error) {
-    console.error("Error formatting date:", error);
-    return "";
-  }
-};
-
-// Helper function to flatten project hierarchy for select options
-const flattenProjects = (nodes: ProjectNode[], prefix = ""): { value: string; label: string; tasks: number }[] => {
-  let options: { value: string; label: string; tasks: number }[] = [];
-  
-  if (!Array.isArray(nodes)) return options;
-  
-  nodes.forEach(node => {
-    if (!node) return;
-    
-    options.push({
-      value: node.fullPath,
-      label: node.fullPath,
-      tasks: node.tasks
-    });
-    
-    if (node.children && Object.keys(node.children).length > 0) {
-      options = options.concat(flattenProjects(Object.values(node.children)));
-    }
-  });
-  
-  return options;
-};
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectNode[]>([]);
-  const [columnFilters, setColumnFilters] = useState([
+  const [projectOptions, setProjectOptions] = useState([]);
+  const [view, setView] = useState<'list' | 'calendar'>('list');
+
+  // Define the status and priority options
+  const statuses = [
     {
-      id: "status",
-      value: ["pending", "waiting"]
-    }
-  ]);
+      value: "pending",
+      label: "Pending",
+    },
+    {
+      value: "completed",
+      label: "Completed",
+    },
+    {
+      value: "waiting",
+      label: "Waiting",
+    },
+  ]
+
+  const priorities = [
+    {
+      value: "H",
+      label: "High",
+    },
+    {
+      value: "M",
+      label: "Medium",
+    },
+    {
+      value: "L",
+      label: "Low",
+    },
+  ]
+
+  // Initialize column filters
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+
+  const columns: ColumnDef<Task>[] = [
+    {
+      accessorKey: "description",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Description" />
+      ),
+      cell: ({ row }) => {
+        return (
+          <div className="flex space-x-2">
+            <span className="max-w-[500px] truncate font-medium">
+              {row.getValue("description")}
+            </span>
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: "status",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Status" />
+      ),
+      cell: ({ row }) => {
+        const status = row.getValue<string>("status");
+        if (!status) return null;
+
+        const StatusIcon = status === "pending" ? Clock :
+                  status === "completed" ? CheckCircle :
+                  status === "waiting" ? Timer :
+                  AlertCircle;
+
+        return (
+          <div className="flex items-center">
+            <StatusIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+            <span className="capitalize">{status}</span>
+          </div>
+        );
+      },
+      filterFn: (row, id, value) => {
+        const status: string = row.getValue(id)
+        if (!value || (Array.isArray(value) && value.length === 0)) return true
+        if (Array.isArray(value)) {
+          return value.includes(status)
+        }
+        return status === value
+      },
+    },
+    {
+      accessorKey: "priority",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Priority" />
+      ),
+      cell: ({ row }) => {
+        return <div className="w-[100px]">{row.getValue("priority")}</div>
+      },
+      filterFn: (row, id, value) => {
+        const priority: string | undefined = row.getValue(id)
+        if (!value || (Array.isArray(value) && value.length === 0)) return true
+        if (Array.isArray(value)) {
+          // Allow tasks without priority when filtering
+          if (!priority) return false
+          return value.includes(priority)
+        }
+        return priority === value
+      },
+    },
+    {
+      accessorKey: "project",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Project" />
+      ),
+      cell: ({ row }) => {
+        return <div className="w-[200px] truncate">{row.getValue("project")}</div>
+      },
+      filterFn: (row, id, value) => {
+        const project: string | undefined = row.getValue(id)
+        // If we're filtering by project and the task has no project, exclude it
+        if (!project) return false
+        if (!value || (Array.isArray(value) && value.length === 0)) return true
+        if (Array.isArray(value)) {
+          return value.some(val => {
+            if (!val) return false
+            if (project === val) return true
+            const taskParts = project.split('.')
+            const valParts = val.split('.')
+            if (valParts.length > taskParts.length) return false
+            return valParts.every((part, i) => taskParts[i] === part)
+          })
+        }
+        return project.toLowerCase().includes(String(value).toLowerCase())
+      },
+    },
+    {
+      accessorKey: "tags",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Tags" />
+      ),
+      cell: ({ row }) => {
+        const tags: string[] = row.getValue("tags") || []
+        return (
+          <div className="flex flex-wrap gap-1 w-[200px]">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 ring-1 ring-inset ring-blue-700/10"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )
+      },
+      filterFn: (row, id, value) => {
+        const tags: string[] = row.getValue(id)
+        // If we're filtering by tags and the task has no tags, exclude it
+        if (!tags || tags.length === 0) return false
+        if (!value || (Array.isArray(value) && value.length === 0)) return true
+        if (Array.isArray(value)) {
+          return value.some(filterTag => 
+            tags.some(tag => tag.toLowerCase().includes(filterTag.toLowerCase()))
+          )
+        }
+        return tags.some(tag => tag.toLowerCase().includes(String(value).toLowerCase()))
+      },
+    },
+    {
+      accessorKey: "urgency",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Urgency" />
+      ),
+      cell: ({ row }) => {
+        return (
+          <div className="w-[100px]">
+            {Number(row.getValue("urgency")).toFixed(2)}
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: "due",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Due Date" />
+      ),
+      cell: ({ row }) => {
+        const due = row.getValue<string>("due");
+        if (!due) return "";
+        
+        try {
+          const isoDate = due.replace(
+            /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/,
+            '$1-$2-$3T$4:$5:$6Z'
+          );
+          
+          const now = new Date();
+          const taskDate = new Date(isoDate);
+          
+          if (isNaN(taskDate.getTime())) return "";
+          
+          const diffInMonths = (now.getFullYear() - taskDate.getFullYear()) * 12 + 
+                              (now.getMonth() - taskDate.getMonth());
+          
+          if (diffInMonths === 0) {
+            const diffInDays = Math.floor((now.getTime() - taskDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (diffInDays === 0) return "today";
+            if (diffInDays === 1) return "yesterday";
+            if (diffInDays < 7) return `${diffInDays}d`;
+            if (diffInDays < 14) return "1wk";
+            if (diffInDays < 21) return "2wk";
+            if (diffInDays < 28) return "3wk";
+            return "4wk";
+          } else if (diffInMonths < 12) {
+            return `${diffInMonths}mo`;
+          } else {
+            const years = Math.floor(diffInMonths / 12);
+            return `${years}y`;
+          }
+        } catch (error) {
+          console.error("Error formatting date:", error);
+          return "";
+        }
+      },
+    },
+    {
+      accessorKey: "entry",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Created" />
+      ),
+      cell: ({ row }) => {
+        const entry = row.getValue<string>("entry");
+        if (!entry) return "";
+        
+        try {
+          const isoDate = entry.replace(
+            /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/,
+            '$1-$2-$3T$4:$5:$6Z'
+          );
+          
+          const now = new Date();
+          const taskDate = new Date(isoDate);
+          
+          if (isNaN(taskDate.getTime())) return "";
+          
+          const diffInMonths = (now.getFullYear() - taskDate.getFullYear()) * 12 + 
+                              (now.getMonth() - taskDate.getMonth());
+          
+          if (diffInMonths === 0) {
+            const diffInDays = Math.floor((now.getTime() - taskDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (diffInDays === 0) return "today";
+            if (diffInDays === 1) return "yesterday";
+            if (diffInDays < 7) return `${diffInDays}d`;
+            if (diffInDays < 14) return "1wk";
+            if (diffInDays < 21) return "2wk";
+            if (diffInDays < 28) return "3wk";
+            return "4wk";
+          } else if (diffInMonths < 12) {
+            return `${diffInMonths}mo`;
+          } else {
+            const years = Math.floor(diffInMonths / 12);
+            return `${years}y`;
+          }
+        } catch (error) {
+          console.error("Error formatting date:", error);
+          return "";
+        }
+      },
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => (
+        <DataTableRowActions 
+          row={row} 
+          onAction={() => {
+            fetchTasks();
+            fetchProjects();
+          }}
+        />
+      ),
+    },
+  ];
+
+  const table = useReactTable({
+    data: tasks,
+    columns,
+    state: {
+      columnFilters,
+    },
+    onColumnFiltersChange: setColumnFilters,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
+  });
+
+  const isFiltered = table.getState().columnFilters.length > 0;
+
+  // Recursive function to flatten project hierarchy
+  const flattenProjects = (nodes: ProjectNode[]): { value: string; label: string; tasks: number }[] => {
+    let options: { value: string; label: string; tasks: number }[] = [];
+    
+    nodes.forEach(node => {
+      options.push({
+        value: node.name,
+        label: node.name, // This will now be the full path (e.g., "work.inbox")
+        tasks: node.count
+      });
+      
+      if (node.children && Object.keys(node.children).length > 0) {
+        options = options.concat(flattenProjects(Object.values(node.children)));
+      }
+    });
+    
+    // Sort by project path
+    options.sort((a, b) => a.label.localeCompare(b.label));
+    
+    return options;
+  };
+
+  useEffect(() => {
+    const options = flattenProjects(projects);
+    setProjectOptions(options);
+  }, [projects]);
+
+  // Get filtered tasks based on current table filters
+  const filteredTasks = useMemo(() => {
+    // First filter out deleted tasks
+    const nonDeletedTasks = tasks.filter(task => task.status !== 'deleted');
+    
+    return nonDeletedTasks.filter(task => {
+      const filters = table.getState().columnFilters;
+      return filters.every(filter => {
+        const column = filter.id;
+        const value = filter.value;
+
+        switch (column) {
+          case 'description':
+            return task.description.toLowerCase().includes((value as string).toLowerCase());
+          case 'status':
+            if (!Array.isArray(value) || value.length === 0) return true;
+            return value.includes(task.status);
+          case 'priority':
+            if (!Array.isArray(value) || value.length === 0) return true;
+            // Exclude tasks without priority when filtering
+            if (!task.priority) return false;
+            return value.includes(task.priority);
+          case 'project':
+            if (!Array.isArray(value) || value.length === 0) return true;
+            // If we're filtering by project and the task has no project, exclude it
+            if (!task.project) return false;
+            return value.some(val => {
+              if (!val) return false;
+              if (task.project === val) return true;
+              const taskParts = task.project.split('.');
+              const valParts = (val as string).split('.');
+              if (valParts.length > taskParts.length) return false;
+              return valParts.every((part, i) => taskParts[i] === part);
+            });
+          case 'tags':
+            if (!Array.isArray(value) || value.length === 0) return true;
+            // If we're filtering by tags and the task has no tags, exclude it
+            if (!task.tags || task.tags.length === 0) return false;
+            return value.some(filterTag => {
+              if (!filterTag) return false;
+              return task.tags!.some(tag => 
+                tag.toLowerCase() === filterTag.toLowerCase()
+              );
+            });
+          default:
+            return true;
+        }
+      });
+    });
+  }, [tasks, table]);
 
   const fetchProjects = async () => {
     try {
       const response = await fetch('/api/projects');
-      const projectTree = await response.json();
-      setProjects(projectTree);
+      const data = await response.json();
+      setProjects(data);
     } catch (err: any) {
       console.error('Error fetching projects:', err?.message || err);
     }
@@ -110,9 +413,19 @@ export default function TasksPage() {
 
   const fetchTasks = async () => {
     try {
-      const response = await fetch('/api/tasks');
+      setLoading(true);
+      // Only include completed tasks if they are selected in the filter
+      const includeCompleted = columnFilters.some(filter => 
+        filter.id === 'status' && 
+        Array.isArray(filter.value) && 
+        filter.value.includes('completed')
+      );
+      
+      const response = await fetch(`/api/tasks?includeCompleted=${includeCompleted}`);
       const data = await response.json();
-      setTasks(data);
+      // Filter out deleted tasks before setting state
+      const nonDeletedTasks = data.filter((task: Task) => task.status !== 'deleted');
+      setTasks(nonDeletedTasks);
     } catch (err: any) {
       console.error('Error fetching tasks:', err?.message || err);
     } finally {
@@ -120,194 +433,148 @@ export default function TasksPage() {
     }
   };
 
-  const handleTaskAction = async (taskId: string, action: string) => {
-    try {
-      const response = await fetch(`/api/tasks/${taskId}/${action}`, {
-        method: 'POST',
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to update task');
-      }
-      
-      // Refresh tasks after action
-      fetchTasks();
-      fetchProjects();
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
-  const columns = useMemo<ColumnDef<Task>[]>(
-    () => [
-      {
-        accessorKey: "description",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Description" />
-        ),
-      },
-      {
-        accessorKey: "project",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Project" />
-        ),
-        cell: ({ row }) => {
-          const project = row.getValue("project") as string;
-          if (!project) return null;
-          return <div className="w-[150px]">{project}</div>;
-        },
-        filterFn: (row, id, value: string[]) => {
-          const project = row.getValue<string>(id);
-          if (!value?.length) return true;
-          if (!project) return false;
-          
-          // Check if the project matches any of the selected values
-          return value.some(val => {
-            // Handle exact match
-            if (project === val) return true;
-            
-            // Handle subproject match (project is a child of val)
-            // Add dots to ensure we match full project parts
-            const projectParts = project.split('.');
-            const valParts = val.split('.');
-            
-            // Check if all parts of val match the beginning of project parts
-            if (valParts.length > projectParts.length) return false;
-            return valParts.every((part, i) => projectParts[i] === part);
-          });
-        },
-      },
-      {
-        accessorKey: "urgency",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Urgency" className="text-center" />
-        ),
-        cell: ({ row }) => {
-          const urgency = row.getValue<number>("urgency");
-          return <div className="text-center">{formatUrgency(urgency)}</div>;
-        },
-      },
-      {
-        accessorKey: "priority",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Priority" className="text-center" />
-        ),
-        cell: ({ row }) => {
-          const priority = row.getValue<string>("priority");
-          if (!priority) return null;
-          const priorityLabels: Record<string, string> = {
-            H: "High",
-            M: "Medium",
-            L: "Low"
-          };
-          return (
-            <div className={`text-center
-              ${priority === 'H' ? 'text-red-600 font-semibold' : ''}
-              ${priority === 'M' ? 'text-gray-600' : ''}
-              ${priority === 'L' ? 'text-gray-400' : ''}
-            `}>
-              {priorityLabels[priority]}
-            </div>
-          );
-        },
-        filterFn: (row, id, value: string[]) => {
-          const priority = row.getValue<string>(id);
-          if (!value?.length) return true;
-          return value.includes(priority);
-        },
-      },
-      {
-        accessorKey: "due",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Due Date" className="text-center" />
-        ),
-        cell: ({ row }) => {
-          const due = row.getValue<string>("due");
-          return <div className="text-center">{formatDate(due)}</div>;
-        },
-      },
-      {
-        accessorKey: "entry",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Created" className="text-center" />
-        ),
-        cell: ({ row }) => {
-          const entry = row.getValue<string>("entry");
-          return <div className="text-center">{formatDate(entry)}</div>;
-        },
-      },
-      {
-        accessorKey: "status",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Status" className="text-center" />
-        ),
-        cell: ({ row }) => {
-          const status = row.getValue<string>("status");
-          if (!status) return null;
-
-          const StatusIcon = status === "pending" ? Clock :
-                    status === "completed" ? CheckCircle :
-                    status === "waiting" ? Timer :
-                    AlertCircle;
-
-          return (
-            <div className="flex items-center justify-center">
-              <StatusIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span className="capitalize">{status}</span>
-            </div>
-          );
-        },
-        filterFn: (row, id, value: string[]) => {
-          const status = row.getValue<string>(id);
-          if (!value?.length) return true;
-          if (!status) return false;
-          return value.includes(status);
-        },
-      },
-      {
-        id: "actions",
-        cell: ({ row }) => (
-          <DataTableRowActions 
-            row={row} 
-            onAction={handleTaskAction}
-          />
-        ),
-      },
-    ],
-    [handleTaskAction]
-  );
-
-  const projectOptions = useMemo(() => {
-    const options = flattenProjects(projects);
-    return options.map(({ value, label, tasks }) => ({
-      value,
-      label,
-      icon: FolderIcon,
-      count: tasks
-    }));
-  }, [projects]);
-
   useEffect(() => {
     fetchTasks();
     fetchProjects();
   }, []);
+
+  useEffect(() => {
+    // Update calendar view when filters change
+    if (view === 'calendar') {
+      // Force calendar view to update with new filtered tasks
+      setView('calendar');
+    }
+  }, [filteredTasks]);
+
+  useEffect(() => {
+    const statusFilter = columnFilters.find(filter => filter.id === 'status');
+    fetchTasks();
+  }, [columnFilters]);
+
+  const handleTaskUpdate = () => {
+    fetchTasks();
+    fetchProjects();
+  };
 
   if (loading) {
     return <div>Loading...</div>;
   }
 
   return (
-    <div className="container mx-auto py-10">
-      <CommandInput onCommandExecuted={() => {
-        fetchTasks()
-        fetchProjects()
-      }} />
-      <DataTable 
-        columns={columns} 
-        data={tasks} 
-        projects={projectOptions}
-        defaultColumnFilters={columnFilters}
-      />
+    <div className="flex flex-col h-screen">
+      <div className="container mx-auto py-4 flex-none">
+        <div className="mb-4">
+          <CommandInput onCommandExecuted={() => {
+            fetchTasks()
+            fetchProjects()
+          }} />
+        </div>
+
+        <div className="mb-4">
+          <div className="flex items-center justify-between p-2">
+            <div className="flex flex-1 items-center space-x-2 overflow-x-auto pb-2">
+              <Input
+                placeholder="Filter tasks..."
+                value={(table.getColumn("description")?.getFilterValue() as string) ?? ""}
+                onChange={(event) =>
+                  table.getColumn("description")?.setFilterValue(event.target.value)
+                }
+                className="h-8 w-[150px] lg:w-[250px]"
+              />
+              {table.getColumn("status") && (
+                <DataTableFacetedFilter
+                  column={table.getColumn("status")}
+                  title="Status"
+                  options={statuses.filter(status => status.value !== 'deleted')}
+                />
+              )}
+              {table.getColumn("priority") && (
+                <DataTableFacetedFilter
+                  column={table.getColumn("priority")}
+                  title="Priority"
+                  options={priorities}
+                />
+              )}
+              {table.getColumn("project") && (
+                <DataTableFacetedFilter
+                  column={table.getColumn("project")}
+                  title="Project"
+                  options={projectOptions.filter(p => !p.value.includes("deleted")).map(project => ({
+                    label: project.label,
+                    value: project.value,
+                    count: project.tasks,
+                  }))}
+                />
+              )}
+              {table.getColumn("tags") && (
+                <DataTableFacetedFilter
+                  column={table.getColumn("tags")}
+                  title="Tags"
+                  options={Array.from(new Set(tasks.flatMap(task => task.tags || []))).map(tag => ({
+                    label: tag,
+                    value: tag,
+                  }))}
+                />
+              )}
+              {isFiltered && (
+                <Button
+                  variant="ghost"
+                  onClick={() => table.resetColumnFilters()}
+                  className="h-8 px-2 lg:px-3"
+                >
+                  Reset
+                  <Cross2Icon className="ml-2 h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <DataTableViewOptions table={table} />
+          </div>
+        </div>
+
+        <div className="flex justify-end mb-4">
+          <div className="inline-flex items-center rounded-lg bg-muted p-1">
+            <Button
+              variant={view === 'list' ? 'secondary' : 'ghost'}
+              className="text-sm"
+              onClick={() => setView('list')}
+            >
+              List View
+            </Button>
+            <Button
+              variant={view === 'calendar' ? 'secondary' : 'ghost'}
+              className="text-sm"
+              onClick={() => setView('calendar')}
+            >
+              Calendar View
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-hidden px-4">
+          {view === 'list' ? (
+            <div className="h-full">
+              <DataTable 
+                table={table} 
+                columns={columns}
+                data={filteredTasks}
+                onTaskUpdate={handleTaskUpdate}
+              />
+            </div>
+          ) : (
+            <CalendarView 
+              tasks={filteredTasks} 
+              onTaskUpdate={handleTaskUpdate} 
+              tableFilters={{
+                status: table.getColumn('status')?.getFilterValue(),
+                priority: table.getColumn('priority')?.getFilterValue(),
+                project: table.getColumn('project')?.getFilterValue(),
+                description: table.getColumn('description')?.getFilterValue(),
+                tags: table.getColumn('tags')?.getFilterValue(),
+              }}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

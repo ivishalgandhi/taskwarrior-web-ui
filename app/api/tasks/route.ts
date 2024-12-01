@@ -1,10 +1,22 @@
 import { NextResponse } from 'next/server';
 import { execTask } from '../utils/taskwarrior';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Get the URL parameters
+    const { searchParams } = new URL(request.url);
+    const includeCompleted = searchParams.get('includeCompleted') === 'true';
+    
+    // Get all tasks
     const tasks = await execTask('export');
-    return NextResponse.json(JSON.parse(tasks));
+    const allTasks = JSON.parse(tasks);
+    
+    // Filter out completed tasks unless explicitly requested
+    const filteredTasks = includeCompleted 
+      ? allTasks
+      : allTasks.filter((task: any) => task.status !== 'completed');
+    
+    return NextResponse.json(filteredTasks);
   } catch (error) {
     console.error('Error fetching tasks:', error);
     return NextResponse.json({ error: 'Failed to fetch tasks' }, { status: 500 });

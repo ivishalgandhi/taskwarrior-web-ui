@@ -13,6 +13,7 @@ import {
   getFacetedRowModel,
   getFacetedUniqueValues,
   useReactTable,
+  Table as ReactTable,
 } from "@tanstack/react-table"
 
 import {
@@ -27,55 +28,27 @@ import {
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import { Task } from "@/types/task"
-import { DataTableToolbar } from "./data-table-toolbar"
+import { DataTablePagination } from "./data-table-pagination"
+import { DataTableColumnHeader } from "./data-table-column-header"
 
 interface DataTableProps<TData, TValue> {
-  columns: ColumnDef<TData, TValue>[]
-  data: TData[]
-  onTaskAction?: (taskId: string, action: string) => Promise<any>
-  projects?: { value: string; label: string; tasks: number }[]
-  defaultColumnFilters?: ColumnFiltersState
+  columns: ColumnDef<TData>[];
+  data: TData[];
+  table: ReactTable<TData>;
+  onTaskUpdate: () => void;
 }
 
-export function DataTable<TData extends Task, TValue>({
+export function DataTable<TData, TValue>({
   columns,
   data,
-  onTaskAction,
-  projects = [],
-  defaultColumnFilters = [],
+  table,
+  onTaskUpdate,
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(defaultColumnFilters)
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
-  const [rowSelection, setRowSelection] = useState({})
-
-  const table = useReactTable({
-    data,
-    columns,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getFacetedRowModel: getFacetedRowModel(),
-    getFacetedUniqueValues: getFacetedUniqueValues(),
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-    },
-  })
-
   return (
-    <div className="space-y-4">
-      <DataTableToolbar table={table} projects={projects} />
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
+    <div className="w-full h-full flex flex-col">
+      <div className="rounded-md border flex-1 overflow-auto">
+        <Table className="relative">
+          <TableHeader className="sticky top-0 bg-background z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
@@ -104,10 +77,7 @@ export function DataTable<TData extends Task, TValue>({
                     <TableCell key={cell.id}>
                       {flexRender(
                         cell.column.columnDef.cell,
-                        {
-                          ...cell.getContext(),
-                          onTaskAction,
-                        }
+                        cell.getContext()
                       )}
                     </TableCell>
                   ))}
@@ -126,30 +96,37 @@ export function DataTable<TData extends Task, TValue>({
           </TableBody>
         </Table>
       </div>
-      <div className="flex items-center justify-end space-x-2">
-        <div className="flex-1 text-sm text-muted-foreground">
-          {table.getFilteredSelectedRowModel().rows.length} of{" "}
-          {table.getFilteredRowModel().rows.length} row(s) selected.
-        </div>
-        <div className="space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <DataTablePagination table={table} />
     </div>
   )
 }
+
+const columns: ColumnDef<Task>[] = [
+  {
+    accessorKey: "tags",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Tags" />
+    ),
+    cell: ({ row }) => {
+      const tags: string[] = row.getValue("tags") || []
+      return (
+        <div className="flex flex-wrap gap-1">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 ring-1 ring-inset ring-blue-700/10"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )
+    },
+    filterFn: (row, id, value) => {
+      const tags: string[] = row.getValue(id)
+      if (!tags || !value) return true
+      return tags.some(tag => tag.toLowerCase().includes(value.toLowerCase()))
+    },
+  },
+  // ... other columns ...
+]
