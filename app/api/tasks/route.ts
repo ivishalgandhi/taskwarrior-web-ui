@@ -39,9 +39,16 @@ export async function GET(request: Request) {
     console.log('[Server] Number of tasks found:', allTasks.length);
     
     // Filter out completed tasks unless explicitly requested
-    const filteredTasks = includeCompleted 
-      ? allTasks
-      : allTasks.filter((task: any) => task.status !== 'completed');
+    // Also filter out recurring tasks as they have child tasks with pending status
+    const filteredTasks = allTasks.filter((task: any) => {
+      // Always exclude recurring tasks
+      if (task.status === 'recurring') return false;
+      
+      // Filter completed tasks based on parameter
+      if (!includeCompleted && task.status === 'completed') return false;
+      
+      return true;
+    });
     
     console.log('[Server] Number of tasks after filtering:', filteredTasks.length);
     
