@@ -1,4 +1,9 @@
 import { exec } from 'child_process';
+import path from 'path';
+import os from 'os';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 let isLocked = false;
 const queue: (() => void)[] = [];
@@ -12,64 +17,97 @@ const processQueue = () => {
   }
 };
 
-export const execTask = (cmd: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const executeCommand = () => {
-      isLocked = true;
-      // Escape the command to handle spaces and special characters
-      const escapedCmd = cmd.replace(/"/g, '\\"');
-      // For export command, don't add export at the end
-      const fullCmd = cmd === 'export' ? 
-        'task rc.json.array=on export' : 
-        `task rc.json.array=on ${escapedCmd} export`;
-      
-      exec(fullCmd, (error, stdout, stderr) => {
-        isLocked = false;
-        processQueue();
-        
-        if (error) {
-          console.error('Taskwarrior error:', error);
-          console.error('Stderr:', stderr);
-          reject(error);
-          return;
-        }
-        resolve(stdout);
-      });
-    };
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
 
-    if (isLocked) {
-      queue.push(executeCommand);
-    } else {
-      executeCommand();
+async function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function execWithRetry(command: string, options: any, retries = 0): Promise<string> {
+  try {
+    const { stdout, stderr } = await execAsync(command, options);
+    if (stderr && !stderr.includes('No matches') && !stderr.includes('No projects')) {
+      console.warn('Command stderr:', stderr);
     }
+    return stdout || stderr;
+  } catch (error: any) {
+    if (error.stderr?.includes('database is locked') && retries < MAX_RETRIES) {
+      console.log(`Database locked, retrying in ${RETRY_DELAY}ms... (attempt ${retries + 1}/${MAX_RETRIES})`);
+      await sleep(RETRY_DELAY);
+      return execWithRetry(command, options, retries + 1);
+    }
+    throw error;
+  }
+}
+
+async function execWithTimeout(command: string, options: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Command timed out after 5s: ${command}`));
+    }, 5000);
+
+    execAsync(command, options).then(({ stdout, stderr }) => {
+      clearTimeout(timeout);
+      
+      console.log('Command:', command);
+      console.log('Stdout:', stdout);
+      console.log('Stderr:', stderr);
+      
+      if (stderr && !stdout && !stderr.includes('No matches') && !stderr.includes('No projects')) {
+        console.error('Error:', stderr);
+        reject(stderr);
+        return;
+      }
+      
+      resolve(stdout || stderr);
+    }).catch((error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
   });
 };
 
-// New function for raw command execution
-export const execRawTask = (cmd: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const executeCommand = () => {
-      isLocked = true;
-      // Escape the command to handle spaces and special characters
-      const escapedCmd = cmd.replace(/"/g, '\\"');
-      exec(`task ${escapedCmd}`, (error, stdout, stderr) => {
-        isLocked = false;
-        processQueue();
-        
-        if (error && !stderr.includes('No matches')) { // Ignore "No matches" error
-          console.error('Taskwarrior error:', error);
-          console.error('Stderr:', stderr);
-          reject(error);
-          return;
-        }
-        resolve(stdout || stderr); // Return stderr if stdout is empty (for "No matches" case)
-      });
-    };
+export const execTask = async (cmd: string): Promise<string> => {
+  try {
+    const escapedCmd = cmd.replace(/"/g, '\\"');
+    const fullCmd = `task rc.json.array=on ${escapedCmd}`;
+    
+    console.log('Executing task command:', fullCmd);
+    
+    const result = await execWithRetry(fullCmd, {
+      env: {
+        ...process.env,
+        PATH: process.env.PATH
+      },
+      shell: '/bin/bash'
+    });
 
-    if (isLocked) {
-      queue.push(executeCommand);
-    } else {
-      executeCommand();
-    }
-  });
+    return result || '[]';
+  } catch (error) {
+    console.error('Task command error:', error);
+    return '[]';
+  }
+};
+
+export const execRawTask = async (cmd: string): Promise<string> => {
+  try {
+    const escapedCmd = cmd.replace(/"/g, '\\"');
+    const fullCmd = `task ${escapedCmd}`;
+    
+    console.log('Executing raw task command:', fullCmd);
+    
+    const result = await execWithRetry(fullCmd, {
+      env: {
+        ...process.env,
+        PATH: process.env.PATH
+      },
+      shell: '/bin/bash'
+    });
+
+    return result || '';
+  } catch (error) {
+    console.error('Raw task command error:', error);
+    return '';
+  }
 };

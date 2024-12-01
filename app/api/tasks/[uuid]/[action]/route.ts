@@ -4,93 +4,83 @@ import { promisify } from 'util'
 
 const execAsync = promisify(exec)
 
-// These are informational messages from Taskwarrior, not errors
-const TASKWARRIOR_INFO_MESSAGES = [
-  'Configuration override',
-  'The project',
-  'is complete',
-  'remaining',
-  'has changed',
-  'Completed',
-  'Started',
-  'Deleted',
-  'Duplicated',
-  'You have more urgent tasks',
-  'Task not started',
-  'Task started'
-]
-
-const isInformationalMessage = (message: string): boolean => {
-  return TASKWARRIOR_INFO_MESSAGES.some(infoMsg => message.includes(infoMsg))
-}
-
-export async function POST(
-  request: Request,
-  { params }: { params: { uuid: string; action: string } }
+export async function GET(
+  request: Request
 ) {
-  const { uuid, action } = params
+  const matches = request.url.match(/\/tasks\/([^\/]+)\/([^\/]+)/)
+  const [, uuid, action] = matches ?? []
 
   try {
-    let command: string
-    switch (action) {
-      case 'done':
-        command = `task rc.confirmation=no ${uuid} done`
-        break
-      case 'start':
-        command = `task rc.confirmation=no ${uuid} start`
-        break
-      case 'delete':
-        command = `task rc.confirmation=no ${uuid} delete`
-        break
-      case 'duplicate':
-        command = `task rc.confirmation=no ${uuid} duplicate`
-        break
-      case 'edit':
-        command = `task ${uuid} export`
-        break
-      default:
-        return NextResponse.json(
-          { error: 'Invalid action' },
-          { status: 400 }
-        )
-    }
-
+    const command = `task ${uuid} export`
     const { stdout, stderr } = await execAsync(command)
 
-    // Split stderr into lines and filter out informational messages
-    const errorLines = stderr.split('\n').filter(line => 
-      line.trim() && !isInformationalMessage(line)
-    )
-
-    // Real errors that aren't informational messages
-    if (errorLines.length > 0) {
-      throw new Error(errorLines.join('\n'))
+    if (stderr) {
+      throw new Error(stderr)
     }
 
-    // For edit action, return the task data
-    if (action === 'edit') {
-      try {
-        const taskData = JSON.parse(stdout)[0]
-        return NextResponse.json(taskData)
-      } catch (error) {
-        throw new Error('Failed to parse task data')
-      }
-    }
-
-    // Get all informational messages
-    const infoMessages = stderr.split('\n')
-      .filter(line => line.trim())
-      .join('\n')
-
-    return NextResponse.json({ 
-      message: `Task ${action}d successfully`,
-      info: infoMessages,
-      stdout
-    })
+    const taskData = JSON.parse(stdout)[0]
+    return NextResponse.json(taskData)
   } catch (error) {
     return NextResponse.json(
       { 
-        error: `Failed to ${action} task`,
+        error: 'Failed to fetch task',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PUT(
+  request: Request
+) {
+  const matches = request.url.match(/\/tasks\/([^\/]+)\/([^\/]+)/)
+  const [, uuid, action] = matches ?? []
+  const body = await request.json()
+
+  try {
+    const modString = Object.entries(body)
+      .map(([key, value]) => `${key}:"${value}"`)
+      .join(' ')
+    
+    const command = `task rc.confirmation=no ${uuid} modify ${modString}`
+    const { stdout, stderr } = await execAsync(command)
+
+    if (stderr) {
+      throw new Error(stderr)
+    }
+
+    return NextResponse.json({ message: 'Task updated successfully', stdout })
+  } catch (error) {
+    return NextResponse.json(
+      { 
+        error: 'Failed to update task',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(
+  request: Request
+) {
+  const matches = request.url.match(/\/tasks\/([^\/]+)\/([^\/]+)/)
+  const [, uuid, action] = matches ?? []
+
+  try {
+    const command = `task rc.confirmation=no ${uuid} delete`
+    const { stdout, stderr } = await execAsync(command)
+
+    if (stderr) {
+      throw new Error(stderr)
+    }
+
+    return NextResponse.json({ message: 'Task deleted successfully', stdout })
+  } catch (error) {
+    return NextResponse.json(
+      { 
+        error: 'Failed to delete task',
         details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }

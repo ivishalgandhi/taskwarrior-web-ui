@@ -30,13 +30,27 @@ export async function POST(request: Request) {
     }
 
     // Add due date if provided
-    if (due) {
-      // Convert from datetime-local format (YYYY-MM-DDTHH:mm) to Taskwarrior format
-      const dueDate = new Date(due)
-      const taskwarriorDate = dueDate.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")
-      cmd += ` due:${taskwarriorDate}`
+    if (due && due.trim()) {
+      try {
+        // Convert from datetime-local format (YYYY-MM-DDTHH:mm) to Taskwarrior format
+        const dueDate = new Date(due)
+        if (!isNaN(dueDate.getTime())) {
+          const taskwarriorDate = dueDate.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")
+          cmd += ` due:${taskwarriorDate}`
+        } else {
+          return NextResponse.json(
+            { error: "Invalid due date format" },
+            { status: 400 }
+          )
+        }
+      } catch (error) {
+        return NextResponse.json(
+          { error: "Invalid due date" },
+          { status: 400 }
+        )
+      }
     } else {
-      // If due is empty string, remove due date
+      // If due is empty string or undefined, remove due date
       cmd += ` due:`
     }
 
@@ -50,17 +64,11 @@ export async function POST(request: Request) {
       })
     }
 
-    // Execute the command
     const result = await execTask(cmd)
-
-    return NextResponse.json({ 
-      message: "Task updated successfully",
-      info: result
-    })
+    return NextResponse.json(result)
   } catch (error) {
-    console.error("Error modifying task:", error)
     return NextResponse.json(
-      { error: "Failed to modify task" },
+      { error: "Failed to modify task", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     )
   }

@@ -95,7 +95,7 @@ export function DataTableRowActions<TData>({
           </DropdownMenuItem>
           <DropdownMenuItem 
             onClick={() => handleAction('start')}
-            disabled={isLoading || task.status === 'completed' || task.start}
+            disabled={isLoading || task.status === 'completed' || !!task.start}
           >
             <Clock className="mr-2 h-4 w-4" />
             Start Task

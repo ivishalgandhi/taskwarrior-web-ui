@@ -66,7 +66,7 @@ export async function GET() {
     // Convert to array format
     const projects = Object.entries(projectCounts).map(([project, count]) => ({
       project,
-      count
+      count: count as number
     }));
 
     // Build the project tree

@@ -1,0 +1,48 @@
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DEBUG=1
+      - TASKDATA=/root/.task
+      - TASKRC=/root/.taskrc
+    volumes:
+      # Mount the entire .task directory with read-write access
+      - type: bind
+        source: ${HOME}/.task
+        target: /root/.task
+      # Mount taskrc as read-only
+      - type: bind
+        source: ${HOME}/.taskrc
+        target: /root/.taskrc
+        read_only: true
+      # Add source code mounting for development
+      - type: bind
+        source: .
+        target: /app
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_ADMIN
+    # Add command to verify task data
+    command: >
+      bash -c '
+        echo "=== Task Environment ===" || true;
+        env | grep TASK || true;
+        echo "=== Task Files ===" || true;
+        ls -la /root/.task || true;
+        echo "=== Task Data Files ===" || true;
+        find /root/.task -type f -exec ls -l {} \; || true;
+        echo "=== Task Config ===" || true;
+        cat /root/.taskrc || true;
+        echo "=== Task Version ===" || true;
+        task --version || true;
+        echo "=== Task Test ===" || true;
+        task rc.data.location=/root/.task rc.json.array=on list || true;
+        echo "=== Task Debug ===" || true;
+        task rc.data.location=/root/.task rc.debug=1 list || true;
+        echo "=== Starting App ===";
+        exec npm run dev'
+    restart: unless-stopped

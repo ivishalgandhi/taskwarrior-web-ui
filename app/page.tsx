@@ -110,8 +110,11 @@ export default function TasksPage() {
 
   const fetchTasks = async () => {
     try {
+      console.log('Fetching tasks from API...');
       const response = await fetch('/api/tasks');
+      console.log('API Response status:', response.status);
       const data = await response.json();
+      console.log('API Response data:', data);
       setTasks(data);
     } catch (err: any) {
       console.error('Error fetching tasks:', err?.message || err);
@@ -283,7 +286,7 @@ export default function TasksPage() {
       value,
       label,
       icon: FolderIcon,
-      count: tasks
+      tasks
     }));
   }, [projects]);
 

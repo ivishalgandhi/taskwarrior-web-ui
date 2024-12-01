@@ -5,10 +5,10 @@ import { promisify } from 'util'
 const execAsync = promisify(exec)
 
 export async function GET(
-  request: Request,
-  { params }: { params: { uuid: string } }
+  request: Request
 ) {
-  const { uuid } = params
+  const matches = request.url.match(/\/tasks\/([^\/]+)/)
+  const [, uuid] = matches ?? [null, '']
 
   try {
     const { stdout } = await execAsync(`task ${uuid} export`)
