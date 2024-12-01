@@ -413,14 +413,7 @@ export default function TasksPage() {
 
   const fetchTasks = async () => {
     try {
-<<<<<<< HEAD
       console.log('Fetching tasks from API...');
-      const response = await fetch('/api/tasks');
-      console.log('API Response status:', response.status);
-      const data = await response.json();
-      console.log('API Response data:', data);
-      setTasks(data);
-=======
       setLoading(true);
       // Only include completed tasks if they are selected in the filter
       const includeCompleted = columnFilters.some(filter => 
@@ -430,11 +423,14 @@ export default function TasksPage() {
       );
       
       const response = await fetch(`/api/tasks?includeCompleted=${includeCompleted}`);
+      console.log('API Response status:', response.status);
+      
       const data = await response.json();
+      console.log('API Response data:', data);
+      
       // Filter out deleted tasks before setting state
       const nonDeletedTasks = data.filter((task: Task) => task.status !== 'deleted');
       setTasks(nonDeletedTasks);
->>>>>>> feature/calendar-view
     } catch (err: any) {
       console.error('Error fetching tasks:', err?.message || err);
     } finally {
@@ -442,7 +438,6 @@ export default function TasksPage() {
     }
   };
 
-<<<<<<< HEAD
   const handleTaskAction = async (taskId: string, action: string) => {
     try {
       const response = await fetch(`/api/tasks/${taskId}/${action}`, {
@@ -450,168 +445,42 @@ export default function TasksPage() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to update task');
+        throw new Error(`Failed to ${action} task`);
       }
       
-      // Refresh tasks after action
-      fetchTasks();
-      fetchProjects();
+      const data = await response.json();
+      return data;
     } catch (error) {
-      console.error('Error:', error);
+      console.error(`Error ${action}ing task:`, error);
+      throw error;
     }
   };
 
-  const columns = useMemo<ColumnDef<Task>[]>(
-    () => [
-      {
-        accessorKey: "description",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Description" />
-        ),
-      },
-      {
-        accessorKey: "project",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Project" />
-        ),
-        cell: ({ row }) => {
-          const project = row.getValue("project") as string;
-          if (!project) return null;
-          return <div className="w-[150px]">{project}</div>;
-        },
-        filterFn: (row, id, value: string[]) => {
-          const project = row.getValue<string>(id);
-          if (!value?.length) return true;
-          if (!project) return false;
+  useEffect(() => {
+    const updateProjectOptions = () => {
+      const flattenProjects = (nodes: ProjectNode[], prefix = ''): any[] => {
+        return nodes.flatMap(node => {
+          const currentPath = prefix ? `${prefix}.${node.name}` : node.name;
+          const result = [{
+            value: currentPath,
+            label: currentPath,
+            tasks: node.count
+          }];
           
-          // Check if the project matches any of the selected values
-          return value.some(val => {
-            // Handle exact match
-            if (project === val) return true;
-            
-            // Handle subproject match (project is a child of val)
-            // Add dots to ensure we match full project parts
-            const projectParts = project.split('.');
-            const valParts = val.split('.');
-            
-            // Check if all parts of val match the beginning of project parts
-            if (valParts.length > projectParts.length) return false;
-            return valParts.every((part, i) => projectParts[i] === part);
-          });
-        },
-      },
-      {
-        accessorKey: "urgency",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Urgency" className="text-center" />
-        ),
-        cell: ({ row }) => {
-          const urgency = row.getValue<number>("urgency");
-          return <div className="text-center">{formatUrgency(urgency)}</div>;
-        },
-      },
-      {
-        accessorKey: "priority",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Priority" className="text-center" />
-        ),
-        cell: ({ row }) => {
-          const priority = row.getValue<string>("priority");
-          if (!priority) return null;
-          const priorityLabels: Record<string, string> = {
-            H: "High",
-            M: "Medium",
-            L: "Low"
-          };
-          return (
-            <div className={`text-center
-              ${priority === 'H' ? 'text-red-600 font-semibold' : ''}
-              ${priority === 'M' ? 'text-gray-600' : ''}
-              ${priority === 'L' ? 'text-gray-400' : ''}
-            `}>
-              {priorityLabels[priority]}
-            </div>
-          );
-        },
-        filterFn: (row, id, value: string[]) => {
-          const priority = row.getValue<string>(id);
-          if (!value?.length) return true;
-          return value.includes(priority);
-        },
-      },
-      {
-        accessorKey: "due",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Due Date" className="text-center" />
-        ),
-        cell: ({ row }) => {
-          const due = row.getValue<string>("due");
-          return <div className="text-center">{formatDate(due)}</div>;
-        },
-      },
-      {
-        accessorKey: "entry",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Created" className="text-center" />
-        ),
-        cell: ({ row }) => {
-          const entry = row.getValue<string>("entry");
-          return <div className="text-center">{formatDate(entry)}</div>;
-        },
-      },
-      {
-        accessorKey: "status",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Status" className="text-center" />
-        ),
-        cell: ({ row }) => {
-          const status = row.getValue<string>("status");
-          if (!status) return null;
-
-          const StatusIcon = status === "pending" ? Clock :
-                    status === "completed" ? CheckCircle :
-                    status === "waiting" ? Timer :
-                    AlertCircle;
-
-          return (
-            <div className="flex items-center justify-center">
-              <StatusIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span className="capitalize">{status}</span>
-            </div>
-          );
-        },
-        filterFn: (row, id, value: string[]) => {
-          const status = row.getValue<string>(id);
-          if (!value?.length) return true;
-          if (!status) return false;
-          return value.includes(status);
-        },
-      },
-      {
-        id: "actions",
-        cell: ({ row }) => (
-          <DataTableRowActions 
-            row={row} 
-            onAction={handleTaskAction}
-          />
-        ),
-      },
-    ],
-    [handleTaskAction]
-  );
-
-  const projectOptions = useMemo(() => {
-    const options = flattenProjects(projects);
-    return options.map(({ value, label, tasks }) => ({
-      value,
-      label,
-      icon: FolderIcon,
-      tasks
-    }));
+          if (node.children.length > 0) {
+            result.push(...flattenProjects(node.children, currentPath));
+          }
+          
+          return result;
+        });
+      };
+      
+      setProjectOptions(flattenProjects(projects));
+    };
+    
+    updateProjectOptions();
   }, [projects]);
 
-=======
->>>>>>> feature/calendar-view
   useEffect(() => {
     fetchTasks();
     fetchProjects();
@@ -624,11 +493,6 @@ export default function TasksPage() {
       setView('calendar');
     }
   }, [filteredTasks]);
-
-  useEffect(() => {
-    const statusFilter = columnFilters.find(filter => filter.id === 'status');
-    fetchTasks();
-  }, [columnFilters]);
 
   const handleTaskUpdate = () => {
     fetchTasks();
