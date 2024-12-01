@@ -3,14 +3,17 @@
 import { CalendarView } from '@/components/calendar-view';
 import { useEffect, useState } from 'react';
 import { Task } from '@/types/task';
+import { useSearchParams } from 'next/navigation';
 
 export default function CalendarPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     const fetchTasks = async () => {
       try {
-        const response = await fetch('/api/tasks');
+        const includeCompleted = searchParams.get('includeCompleted') === 'true';
+        const response = await fetch(`/api/tasks?includeCompleted=${includeCompleted}`);
         if (!response.ok) throw new Error('Failed to fetch tasks');
         const data = await response.json();
         
@@ -25,7 +28,7 @@ export default function CalendarPage() {
     };
 
     fetchTasks();
-  }, []);
+  }, [searchParams]); // Re-fetch when search params change
 
   return (
     <div className="container mx-auto py-6">

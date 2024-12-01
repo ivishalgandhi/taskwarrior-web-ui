@@ -68,9 +68,15 @@ async function execWithTimeout(command: string, options: any): Promise<string> {
   });
 };
 
-export const execTask = async (cmd: string): Promise<string> => {
+export const execTask = async (cmd: string, includeCompleted: boolean = false): Promise<string> => {
   try {
-    const escapedCmd = cmd.replace(/"/g, '\\"');
+    let escapedCmd = cmd.replace(/"/g, '\\"');
+    
+    // If it's an export command and we want completed tasks, modify the command
+    if (cmd === 'export' && includeCompleted) {
+      escapedCmd = 'export status:completed or status:pending or status:waiting';
+    }
+    
     const fullCmd = `task rc.json.array=on ${escapedCmd}`;
     
     console.log('Executing task command:', fullCmd);

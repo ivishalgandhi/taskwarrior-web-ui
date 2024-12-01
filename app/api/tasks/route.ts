@@ -26,8 +26,8 @@ export async function GET(request: Request) {
     const includeCompleted = searchParams.get('includeCompleted') === 'true';
     console.log('[Server] Include completed tasks:', includeCompleted);
     
-    // Now try export
-    const tasks = await execTask('export');
+    // Now try export with includeCompleted parameter
+    const tasks = await execTask('export', includeCompleted);
     console.log('[Server] Raw export output:', tasks);
     
     if (!tasks.trim()) {
@@ -38,15 +38,10 @@ export async function GET(request: Request) {
     const allTasks = JSON.parse(tasks);
     console.log('[Server] Number of tasks found:', allTasks.length);
     
-    // Filter out completed tasks unless explicitly requested
-    // Also filter out recurring tasks as they have child tasks with pending status
+    // Filter out recurring tasks as they have child tasks with pending status
     const filteredTasks = allTasks.filter((task: any) => {
       // Always exclude recurring tasks
       if (task.status === 'recurring') return false;
-      
-      // Filter completed tasks based on parameter
-      if (!includeCompleted && task.status === 'completed') return false;
-      
       return true;
     });
     
