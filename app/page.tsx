@@ -65,7 +65,12 @@ export default function TasksPage() {
   ]
 
   // Initialize column filters
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([
+    {
+      id: "status",
+      value: ["pending", "waiting"]
+    }
+  ]);
 
   const columns: ColumnDef<Task>[] = [
     {
@@ -319,6 +324,11 @@ export default function TasksPage() {
     getSortedRowModel: getSortedRowModel(),
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
+    initialState: {
+      pagination: {
+        pageSize: 50,
+      },
+    },
   });
 
   const isFiltered = table.getState().columnFilters.length > 0;
@@ -586,7 +596,20 @@ export default function TasksPage() {
             <Button
               variant={view === 'calendar' ? 'secondary' : 'ghost'}
               className="text-sm"
-              onClick={() => setView('calendar')}
+              onClick={() => {
+                // Get current status filters
+                const statusFilter = columnFilters.find(filter => filter.id === 'status');
+                const statusValues = statusFilter?.value as string[] | undefined;
+                
+                // Build the URL with current filters
+                const params = new URLSearchParams();
+                if (statusValues?.length) {
+                  params.set('status', statusValues.join(','));
+                }
+                
+                // Navigate to calendar page with filters
+                window.location.href = `/calendar?${params.toString()}`;
+              }}
             >
               Calendar View
             </Button>

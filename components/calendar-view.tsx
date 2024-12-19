@@ -31,6 +31,8 @@ export function CalendarView({ tasks, onTaskUpdate, tableFilters }: CalendarView
   useEffect(() => {
     // First filter out deleted tasks
     const nonDeletedTasks = tasks.filter(task => task.status !== 'deleted' && task.status !== 'archived');
+    console.log('[Calendar] Tasks before status filtering:', nonDeletedTasks.length);
+    console.log('[Calendar] Table filters:', tableFilters);
     
     const filtered = nonDeletedTasks.filter(task => {
       if (!tableFilters) return true
@@ -42,8 +44,24 @@ export function CalendarView({ tasks, onTaskUpdate, tableFilters }: CalendarView
         switch (key) {
           case 'status':
             if (Array.isArray(value)) {
+              // If no status filters, show all tasks
               if (value.length === 0) return true;
-              return value.includes(task.status);
+              
+              // Check if task status is in allowed statuses
+              const included = value.includes(task.status);
+              
+              // Debug logging for completed tasks
+              if (task.status === 'completed' || value.includes('completed')) {
+                console.log('[Calendar] Task status check:', {
+                  taskDescription: task.description,
+                  taskStatus: task.status,
+                  allowedStatuses: value,
+                  included,
+                  due: task.due
+                });
+              }
+              
+              return included;
             }
             break
           case 'priority':
@@ -87,7 +105,17 @@ export function CalendarView({ tasks, onTaskUpdate, tableFilters }: CalendarView
       return true
     })
 
-    const events = filtered.map(task => ({
+    // Debug logging for tasks and due dates
+    console.log('[Calendar] Tasks after status filtering:', filtered.length);
+    console.log('[Calendar] Completed tasks:', filtered.filter(t => t.status === 'completed').length);
+    console.log('[Calendar] Tasks with due dates:', filtered.filter(t => t.due).length);
+    console.log('[Calendar] Completed tasks with due dates:', filtered.filter(t => t.status === 'completed' && t.due).length);
+
+    // Only show tasks with due dates in calendar
+    const tasksWithDueDates = filtered.filter(task => task.due);
+    console.log('[Calendar] Final tasks to show in calendar:', tasksWithDueDates.length);
+
+    const events = tasksWithDueDates.map(task => ({
       id: task.uuid,
       title: task.description,
       start: task.due ? new Date(task.due.replace(
