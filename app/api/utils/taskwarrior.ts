@@ -1,119 +1,162 @@
 import { exec } from 'child_process';
+import { promisify } from 'util';
 import path from 'path';
 import os from 'os';
-import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
-let isLocked = false;
-const queue: (() => void)[] = [];
-
-const processQueue = () => {
-  if (queue.length > 0 && !isLocked) {
-    const nextTask = queue.shift();
-    if (nextTask) {
-      nextTask();
-    }
-  }
+const DEFAULT_OPTIONS = {
+  env: {
+    ...process.env,
+    TASKRC: path.join(os.homedir(), '.taskrc'),
+  },
+  maxBuffer: 1024 * 1024 * 10, // 10MB buffer
 };
 
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
+// Common non-error messages from taskwarrior
+const NON_ERROR_MESSAGES = [
+  'No matches',
+  'No projects',
+  'Created task',
+  'TASKRC override',
+  'Sync required',
+  'There are',
+  'local changes'
+];
 
-async function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+/**
+ * Check if a message is a real error or just taskwarrior info
+ */
+function isRealError(message: string): boolean {
+  const lines = message.split('\n').map(line => line.trim()).filter(Boolean);
+  return !lines.every(line => 
+    NON_ERROR_MESSAGES.some(msg => line.includes(msg))
+  );
 }
 
-async function execWithRetry(command: string, options: any, retries = 0): Promise<string> {
+/**
+ * Clean taskwarrior output by removing common info messages
+ */
+function cleanOutput(output: string): string {
+  return output
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !NON_ERROR_MESSAGES.some(msg => line.includes(msg)))
+    .join('\n');
+}
+
+/**
+ * Execute a raw taskwarrior command with proper options
+ */
+export async function executeCommand(command: string, forceExport: boolean = false): Promise<string> {
+  if (!command) {
+    throw new Error('Command is required');
+  }
+
   try {
-    const { stdout, stderr } = await execAsync(command, options);
-    if (stderr && !stderr.includes('No matches') && !stderr.includes('No projects')) {
-      console.warn('Command stderr:', stderr);
+    // Build command with proper options
+    const parts = [];
+
+    // Add rc.verbose=nothing if not already present
+    if (!command.includes('rc.verbose=')) {
+      parts.push('rc.verbose=nothing');
     }
-    return stdout || stderr;
+
+    // Add the main command
+    parts.push(command);
+
+    // Add export if needed
+    if (forceExport && !command.includes('export')) {
+      parts.push('export');
+    }
+
+    // Join all parts
+    const fullCommand = parts.filter(Boolean).join(' ');
+    console.log('Executing taskwarrior command:', fullCommand);
+    
+    const { stdout, stderr } = await execAsync(`task ${fullCommand}`, {
+      ...DEFAULT_OPTIONS,
+      timeout: 10000 // 10 second timeout
+    });
+    
+    // Check for common error patterns
+    if (stderr) {
+      const stderrStr = stderr.toString().trim();
+      if (stderrStr && isRealError(stderrStr)) {
+        throw new Error(stderrStr);
+      }
+    }
+    
+    // Handle empty output cases
+    if (!stdout.trim()) {
+      if (command === '_tags') return '';
+      if (command === '_projects') return '';
+      throw new Error('Command produced no output');
+    }
+    
+    return stdout.trim();
+    
   } catch (error: any) {
-    if (error.stderr?.includes('database is locked') && retries < MAX_RETRIES) {
-      console.log(`Database locked, retrying in ${RETRY_DELAY}ms... (attempt ${retries + 1}/${MAX_RETRIES})`);
-      await sleep(RETRY_DELAY);
-      return execWithRetry(command, options, retries + 1);
+    console.error('Task execution error:', error);
+    if (error.code === 'ENOENT') {
+      throw new Error('Taskwarrior is not installed or not in PATH');
+    }
+    if (error.code === 'ETIMEDOUT') {
+      throw new Error('Command timed out');
     }
     throw error;
   }
 }
 
-async function execWithTimeout(command: string, options: any): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error(`Command timed out after 5s: ${command}`));
-    }, 5000);
-
-    execAsync(command, options).then(({ stdout, stderr }) => {
-      clearTimeout(timeout);
-      
-      console.log('Command:', command);
-      console.log('Stdout:', stdout);
-      console.log('Stderr:', stderr);
-      
-      if (stderr && !stdout && !stderr.includes('No matches') && !stderr.includes('No projects')) {
-        console.error('Error:', stderr);
-        reject(stderr);
-        return;
-      }
-      
-      resolve(stdout || stderr);
-    }).catch((error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-  });
-};
-
-export const execTask = async (cmd: string, includeCompleted: boolean = false): Promise<string> => {
+/**
+ * Get tasks as JSON
+ */
+export async function getTasks(filter: string = ''): Promise<any[]> {
   try {
-    let escapedCmd = cmd.replace(/"/g, '\\"');
+    // Always use rc.json.array=on for consistent JSON output
+    const command = filter ? `rc.json.array=on ${filter}` : 'rc.json.array=on';
+    console.log('Getting tasks with command:', command);
     
-    // If it's an export command and we want completed tasks, modify the command
-    if (cmd === 'export' && includeCompleted) {
-      escapedCmd = 'export status:completed or status:pending or status:waiting';
+    const output = await executeCommand(command, true); // Force export
+    if (!output) return [];
+    
+    try {
+      const tasks = JSON.parse(output);
+      return Array.isArray(tasks) ? tasks : [];
+    } catch (error) {
+      console.error('Error parsing task JSON:', error);
+      console.error('Raw output:', output);
+      return [];
     }
-    
-    const fullCmd = `task rc.json.array=on ${escapedCmd}`;
-    
-    console.log('Executing task command:', fullCmd);
-    
-    const result = await execWithRetry(fullCmd, {
-      env: {
-        ...process.env,
-        PATH: process.env.PATH
-      },
-      shell: '/bin/bash'
-    });
-
-    return result || '[]';
   } catch (error) {
-    console.error('Task command error:', error);
-    return '[]';
+    console.error('Error getting tasks:', error);
+    throw error;
   }
-};
+}
 
-export const execRawTask = async (cmd: string): Promise<string> => {
+/**
+ * Get the latest task
+ */
+export async function getLatestTask(): Promise<any> {
   try {
-    const escapedCmd = cmd.replace(/"/g, '\\"');
-    const fullCmd = `task ${escapedCmd}`;
-    
-    console.log('Executing raw task command:', fullCmd);
-    
-    const result = await execWithRetry(fullCmd, {
-      env: {
-        ...process.env,
-        PATH: process.env.PATH
-      },
-      shell: '/bin/bash'
-    });
-
-    return result || '';
+    // Sort by entry time in descending order and limit to 1
+    const tasks = await getTasks('limit:1 newest');
+    return tasks[0];
   } catch (error) {
-    console.error('Raw task command error:', error);
-    return '';
+    console.error('Error getting latest task:', error);
+    throw error;
   }
-};
+}
+
+/**
+ * Get a single task by ID
+ */
+export async function getTaskData(id: string): Promise<any> {
+  try {
+    const tasks = await getTasks(`${id}`);
+    return tasks[0];
+  } catch (error) {
+    console.error(`Error getting task ${id}:`, error);
+    throw error;
+  }
+}

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { execRawTask } from '../utils/taskwarrior';
+import { executeCommand } from '@/app/api/utils/taskwarrior';
 
 interface ProjectNode {
   name: string;
@@ -29,7 +29,7 @@ function buildProjectTree(projects: { project: string; count: number }[]): Proje
 
       if (!current[part]) {
         current[part] = {
-          name: currentPath, // Use full path as name
+          name: part,
           fullPath: currentPath,
           tasks: 0,
           children: {}
@@ -66,14 +66,14 @@ function buildProjectTree(projects: { project: string; count: number }[]): Proje
 export async function GET() {
   try {
     // Get all tasks with projects using export
-    const tasksOutput = await execRawTask('rc.json.array=on export');
+    const output = await executeCommand('rc.json.array=on', true);
     
     // Handle no tasks case
-    if (!tasksOutput.trim()) {
+    if (!output.trim()) {
       return NextResponse.json([]);
     }
 
-    const tasks = JSON.parse(tasksOutput);
+    const tasks = JSON.parse(output);
     
     // Get distinct projects and count tasks for each project
     const projectCounts = tasks.reduce((acc: { [key: string]: number }, task: any) => {

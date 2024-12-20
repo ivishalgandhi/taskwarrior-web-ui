@@ -1,72 +1,79 @@
-import { NextResponse } from 'next/server';
-import { execTask } from '../utils/taskwarrior';
+import { NextRequest, NextResponse } from 'next/server';
+import { executeCommand, queryTasks } from '@/lib/taskwarrior';
 
-export async function GET(request: Request) {
+// Commands that modify tasks
+const MODIFY_COMMANDS = [
+  'add', 'modify', 'done', 'delete', 'start', 'stop',
+  'annotate', 'denotate', 'edit', 'append', 'prepend'
+];
+
+function isModifyCommand(command: string): boolean {
+  return MODIFY_COMMANDS.some(cmd => command.trim().startsWith(cmd));
+}
+
+export async function GET(request: NextRequest) {
   try {
-    console.log('[Server] Starting task export...');
+    // Get filter from query params
+    const searchParams = request.nextUrl.searchParams;
+    const filter = searchParams.get('filter') || '';
     
-    // First check if taskwarrior is working
-    try {
-      const version = await execTask('_version');
-      console.log('[Server] Taskwarrior version:', version);
-    } catch (e) {
-      console.error('[Server] Error getting version:', e);
-    }
+    console.log('GET /api/tasks - Filter:', filter);
     
-    // Try to list tasks first
-    try {
-      const list = await execTask('list');
-      console.log('[Server] Task list output:', list);
-    } catch (e) {
-      console.error('[Server] Error listing tasks:', e);
-    }
+    // Query tasks with filter
+    const tasks = await queryTasks(filter);
     
-    // Get the URL parameters
-    const { searchParams } = new URL(request.url);
-    const includeCompleted = searchParams.get('includeCompleted') === 'true';
-    console.log('[Server] Include completed tasks:', includeCompleted);
-    
-    // Now try export with includeCompleted parameter
-    const tasks = await execTask('export', includeCompleted);
-    console.log('[Server] Raw export output:', tasks);
-    
-    if (!tasks.trim()) {
-      console.log('[Server] No tasks found in export');
-      return NextResponse.json([]);
-    }
-    
-    const allTasks = JSON.parse(tasks);
-    console.log('[Server] Number of tasks found:', allTasks.length);
-    
-    // Filter out recurring tasks as they have child tasks with pending status
-    const filteredTasks = allTasks.filter((task: any) => {
-      // Always exclude recurring tasks
-      if (task.status === 'recurring') return false;
-      return true;
+    return NextResponse.json({
+      success: true,
+      tasks: tasks
     });
-    
-    console.log('[Server] Number of tasks after filtering:', filteredTasks.length);
-    
-    return NextResponse.json(filteredTasks);
   } catch (error) {
     console.error('Error fetching tasks:', error);
-    return NextResponse.json({ error: 'Failed to fetch tasks' }, { status: 500 });
+    return NextResponse.json(
+      { 
+        success: false,
+        error: 'Failed to fetch tasks',
+        tasks: []
+      },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { description, project, tags } = body;
+    const { command } = await request.json();
     
-    let cmd = `add "${description}"`;
-    if (project) cmd += ` project:"${project}"`;
-    if (tags) cmd += ` ${tags.map((t: string) => `+${t}`).join(' ')}`;
-    
-    const result = await execTask(cmd);
-    return NextResponse.json({ success: true, result });
-  } catch (error) {
-    console.error('Error adding task:', error);
-    return NextResponse.json({ error: 'Failed to add task' }, { status: 500 });
+    if (!command) {
+      return NextResponse.json(
+        { error: 'Command is required' },
+        { status: 400 }
+      );
+    }
+
+    console.log('POST /api/tasks - Command:', command);
+
+    // If it's a modify command, execute it and return result
+    if (isModifyCommand(command)) {
+      console.log('Executing modify command:', command);
+      const result = await executeCommand(command);
+      return NextResponse.json({ success: true, result });
+    }
+
+    // For all other commands, treat as filter and return tasks
+    console.log('Executing filter command:', command);
+    const tasks = await queryTasks(command);
+    return NextResponse.json({ 
+      success: true, 
+      tasks: tasks 
+    });
+  } catch (error: any) {
+    console.error('Error executing command:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to execute command',
+        message: error.message || 'Unknown error'
+      },
+      { status: 500 }
+    );
   }
 }

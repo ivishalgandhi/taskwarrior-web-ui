@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { DataTableColumnHeader } from "@/components/data-table-column-header";
 import { FolderIcon } from "@/components/icons/folder-icon";
-import { CommandInput } from "@/components/command-input";
+import { CommandAutocomplete } from "@/components/command-autocomplete";
 import { CalendarView } from '@/components/calendar-view';
 import { DataTableRowActions } from "@/components/data-table-row-actions";
 import { DataTableToolbar } from "@/components/data-table-toolbar"; 
@@ -32,6 +32,7 @@ export default function TasksPage() {
   const [projects, setProjects] = useState<ProjectNode[]>([]);
   const [projectOptions, setProjectOptions] = useState([]);
   const [view, setView] = useState<'list' | 'calendar'>('list');
+  const [currentFilter, setCurrentFilter] = useState('');
 
   // Define the status and priority options
   const statuses = [
@@ -421,28 +422,27 @@ export default function TasksPage() {
     }
   };
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (filter: string = currentFilter) => {
+    setLoading(true);
     try {
-      console.log('Fetching tasks from API...');
-      setLoading(true);
-      // Only include completed tasks if they are selected in the filter
-      const includeCompleted = columnFilters.some(filter => 
-        filter.id === 'status' && 
-        Array.isArray(filter.value) && 
-        filter.value.includes('completed')
-      );
-      
-      const response = await fetch(`/api/tasks?includeCompleted=${includeCompleted}`);
-      console.log('API Response status:', response.status);
+      const response = await fetch(`/api/tasks${filter ? `?filter=${encodeURIComponent(filter)}` : ''}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch tasks: ${response.statusText}`);
+      }
       
       const data = await response.json();
-      console.log('API Response data:', data);
       
-      // Filter out deleted tasks before setting state
-      const nonDeletedTasks = data.filter((task: Task) => task.status !== 'deleted');
+      // Handle new response format
+      const tasksArray = data.success ? data.tasks : [];
+      
+      // Filter out deleted tasks
+      const nonDeletedTasks = tasksArray.filter(task => task.status !== 'deleted');
+      
       setTasks(nonDeletedTasks);
+      setCurrentFilter(filter); // Save the current filter
     } catch (err: any) {
       console.error('Error fetching tasks:', err?.message || err);
+      setTasks([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -464,6 +464,11 @@ export default function TasksPage() {
       console.error(`Error ${action}ing task:`, error);
       throw error;
     }
+  };
+
+  const handleTaskUpdate = (newFilter?: string) => {
+    fetchTasks(newFilter);
+    fetchProjects();
   };
 
   useEffect(() => {
@@ -504,11 +509,6 @@ export default function TasksPage() {
     }
   }, [filteredTasks]);
 
-  const handleTaskUpdate = () => {
-    fetchTasks();
-    fetchProjects();
-  };
-
   if (loading) {
     return <div>Loading...</div>;
   }
@@ -517,9 +517,8 @@ export default function TasksPage() {
     <div className="flex flex-col h-screen">
       <div className="container mx-auto py-4 flex-none">
         <div className="mb-4">
-          <CommandInput onCommandExecuted={() => {
-            fetchTasks()
-            fetchProjects()
+          <CommandAutocomplete onCommandExecuted={(filter?: string) => {
+            handleTaskUpdate(filter)
           }} />
         </div>
 
