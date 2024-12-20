@@ -60,15 +60,15 @@ export function CommandAutocomplete({ onCommandExecuted }: CommandAutocompletePr
               display: cmd,
               description: 'Taskwarrior command'
             }));
-          
-          setShowSuggestions(newSuggestions.length > 0);
         }
-        // Show project suggestions after 'project:'
-        else if (lastWord.startsWith('project:')) {
-          const query = lastWord.slice(8); // Remove 'project:'
+
+        // Show project suggestions
+        const projectMatch = lastWord.match(/^(?:project:)?(.*)$/);
+        if (projectMatch) {
+          const query = projectMatch[1];
           const projects = await fetchSuggestions('projects');
           
-          newSuggestions = projects
+          const projectSuggestions = projects
             .filter(project => project.toLowerCase().includes(query.toLowerCase()))
             .map(project => ({
               value: 'project:' + project,
@@ -77,15 +77,17 @@ export function CommandAutocomplete({ onCommandExecuted }: CommandAutocompletePr
               description: 'Project name'
             }));
           
-          setShowSuggestions(newSuggestions.length > 0);
+          newSuggestions = [...newSuggestions, ...projectSuggestions];
         }
-        // Show tag suggestions after '+' or '-'
-        else if (lastWord.startsWith('+') || lastWord.startsWith('-')) {
-          const prefix = lastWord[0];
-          const query = lastWord.slice(1);
+
+        // Show tag suggestions
+        const tagMatch = lastWord.match(/^[+-]?(.*)$/);
+        if (tagMatch) {
+          const prefix = lastWord.startsWith('-') ? '-' : '+';
+          const query = tagMatch[1];
           const tags = await fetchSuggestions('tags');
           
-          newSuggestions = tags
+          const tagSuggestions = tags
             .filter(tag => tag.toLowerCase().includes(query.toLowerCase()))
             .map(tag => ({
               value: prefix + tag,
@@ -94,14 +96,16 @@ export function CommandAutocomplete({ onCommandExecuted }: CommandAutocompletePr
               description: prefix === '+' ? 'Add tag' : 'Remove tag'
             }));
           
-          setShowSuggestions(newSuggestions.length > 0);
+          newSuggestions = [...newSuggestions, ...tagSuggestions];
         }
-        // Show date suggestions after 'due:'
-        else if (lastWord.startsWith('due:')) {
-          const query = lastWord.slice(4); // Remove 'due:'
+
+        // Show date suggestions
+        const dateMatch = lastWord.match(/^(?:due:)?(.*)$/);
+        if (dateMatch) {
+          const query = dateMatch[1];
           const dates = ['today', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'eow', 'eom', 'eoy'];
           
-          newSuggestions = dates
+          const dateSuggestions = dates
             .filter(date => date.toLowerCase().includes(query.toLowerCase()))
             .map(date => ({
               value: 'due:' + date,
@@ -110,13 +114,10 @@ export function CommandAutocomplete({ onCommandExecuted }: CommandAutocompletePr
               description: 'Due date'
             }));
           
-          setShowSuggestions(newSuggestions.length > 0);
+          newSuggestions = [...newSuggestions, ...dateSuggestions];
         }
-        // No suggestions for other cases
-        else {
-          setShowSuggestions(false);
-        }
-        
+
+        setShowSuggestions(newSuggestions.length > 0);
         setSuggestions(newSuggestions);
       } catch (error) {
         console.error('Error handling command:', error);
