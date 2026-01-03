@@ -136,17 +136,68 @@ sudo systemctl stop taskwarrior-web
 
 ---
 
-## Option 4: With Nginx Reverse Proxy (Best for Production)
+## Option 4: With Reverse Proxy (Best for Production)
 
-Use **Option 2 (PM2)** or **Option 3 (Systemd)**, then add nginx:
+Use **Option 2 (PM2)** or **Option 3 (Systemd)**, then add a reverse proxy.
 
-### Install nginx
+### Option 4A: Caddy (Recommended - Automatic HTTPS!)
+
+Caddy automatically handles SSL certificates - no certbot needed!
+
+#### Install Caddy
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install -y caddy
+```
+
+#### Configure Caddy
+```bash
+sudo nano /etc/caddy/Caddyfile
+```
+
+Paste this configuration:
+```caddy
+# For domain with automatic HTTPS
+your-domain.com {
+    reverse_proxy localhost:3000
+}
+
+# OR for local IP without HTTPS
+http://your-lxc-ip {
+    reverse_proxy localhost:3000
+}
+```
+
+#### Enable and restart
+```bash
+sudo systemctl restart caddy
+sudo systemctl enable caddy
+sudo systemctl status caddy
+```
+
+**Pros:** 
+- ✅ Automatic HTTPS/SSL (no certbot needed!)
+- ✅ Simplest configuration
+- ✅ Auto-renews certificates
+- ✅ Modern and fast
+
+**Cons:** 
+- Less common than nginx (but growing fast)
+
+---
+
+### Option 4B: Nginx (Traditional Choice)
+
+#### Install nginx
 ```bash
 sudo apt-get update
 sudo apt-get install -y nginx
 ```
 
-### Configure nginx
+#### Configure nginx
 ```bash
 sudo nano /etc/nginx/sites-available/taskwarrior
 ```
@@ -171,21 +222,26 @@ server {
 }
 ```
 
-### Enable and restart
+#### Enable and restart
 ```bash
 sudo ln -s /etc/nginx/sites-available/taskwarrior /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-**Pros:** Standard port 80/443, SSL support, better security, can host multiple apps  
-**Cons:** Additional component to manage
-
-### Add SSL (Optional but Recommended)
+#### Add SSL (Optional but Recommended)
 ```bash
 sudo apt-get install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d your-domain.com
 ```
+
+**Pros:** 
+- ✅ Industry standard
+- ✅ Well documented
+- ✅ Widely used
+
+**Cons:** 
+- Manual SSL setup with certbot
 
 ---
 
@@ -196,7 +252,8 @@ sudo certbot --nginx -d your-domain.com
 | Direct Node | ❌ | ❌ | Console | 3000 | ⭐ | Testing |
 | PM2 | ✅ | ✅ | pm2 logs | 3000 | ⭐⭐ | Development/Personal |
 | Systemd | ✅ | ✅ | journalctl | 3000 | ⭐⭐⭐ | Production |
-| Nginx + PM2/Systemd | ✅ | ✅ | Multiple | 80/443 | ⭐⭐⭐⭐ | Production + SSL |
+| Caddy + PM2/Systemd | ✅ | ✅ | Multiple | 80/443 | ⭐⭐⭐⭐ | Production (easiest SSL!) |
+| Nginx + PM2/Systemd | ✅ | ✅ | Multiple | 80/443 | ⭐⭐⭐⭐ | Production (traditional) |
 
 ---
 
@@ -207,9 +264,11 @@ sudo certbot --nginx -d your-domain.com
 - Good monitoring
 - Reliable
 
-**For production/team use:** Option 4 (Systemd + Nginx)
+**For production/team use:** Option 4 (Systemd + Caddy or Nginx)
+- **Caddy** if you want automatic HTTPS (recommended!)
+- **Nginx** if you prefer traditional/battle-tested
 - Professional setup
-- Easy SSL with Let's Encrypt
+- Easy SSL (automatic with Caddy, certbot with Nginx)
 - Standard ports (80/443)
 - Better security
 
@@ -242,6 +301,14 @@ sudo systemctl restart nginx                  # Restart
 sudo nginx -t                                 # Test config
 sudo tail -f /var/log/nginx/access.log        # Access logs
 sudo tail -f /var/log/nginx/error.log         # Error logs
+```
+
+### Caddy
+```bash
+sudo systemctl restart caddy                  # Restart
+caddy fmt /etc/caddy/Caddyfile               # Format/validate config
+sudo systemctl status caddy                   # Status
+sudo journalctl -u caddy -f                  # Logs
 ```
 
 ---
