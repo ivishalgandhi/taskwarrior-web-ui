@@ -885,6 +885,174 @@ Detailed explanation if needed.
 
 ---
 
+## Bug Tracking and Issue Management
+
+### Creating Issues
+
+Issues are tracked using **GitHub Issues** for transparency and integration with the codebase.
+
+**Using GitHub Web Interface:**
+1. Go to https://github.com/ivishalgandhi/taskwarrior-web-ui/issues
+2. Click "New issue"
+3. Fill in the template format below
+4. Add appropriate labels
+
+**Using GitHub CLI (`gh`):**
+```bash
+gh issue create --title "Brief description" --body "Detailed description with reproduction steps"
+```
+
+**Issue Template Format:**
+```markdown
+## Bug Description
+Brief description of the issue
+
+## Steps to Reproduce
+1. Step one
+2. Step two
+3. Step three
+
+## Expected Behavior
+- What should happen
+
+## Actual Behavior
+- What actually happens
+
+## Environment
+- Deployment: Production/Development/Local
+- Browser/Version: Chrome 120, Safari 17, etc.
+- Component: Frontend/Backend/API
+
+## Suspected Root Cause
+- File(s) that might be involved
+- Potential cause
+
+## Priority
+P0 (Critical) / P1 (High) / P2 (Medium) / P3 (Low)
+
+## Component
+frontend, backend, auth, API
+```
+
+### Standard Labels
+
+Create these labels for consistent issue tracking:
+
+```bash
+# Priority labels
+gh label create "P0" --color "b60205" --description "Critical - blocks production"
+gh label create "P1" --color "d93f0b" --description "High priority"
+gh label create "P2" --color "fbca04" --description "Medium priority"
+gh label create "P3" --color "0e8a16" --description "Low priority"
+
+# Type labels
+gh label create "bug" --color "d73a4a" --description "Something isn't working"
+gh label create "enhancement" --color "a2eeef" --description "New feature or request"
+gh label create "documentation" --color "0075ca" --description "Documentation improvements"
+
+# Component labels
+gh label create "frontend" --color "1d76db" --description "Frontend components"
+gh label create "backend" --color "5319e7" --description "Backend/API"
+gh label create "auth" --color "c5def5" --description "Authentication"
+gh label create "deployment" --color "d4c5f9" --description "Deployment related"
+```
+
+### Workflow for Fixing Bugs
+
+**1. Find or Create Issue**
+- Search existing issues first to avoid duplicates
+- Create new issue if not found
+- Note the issue number (e.g., #1, #2)
+
+**2. Create Branch**
+Use descriptive branch names with issue number:
+```bash
+# Format: bug/issue-number-short-description
+git checkout -b bug/1-command-input-error-handling
+git checkout -b fix/auth-redirect-loop
+git checkout -b hotfix/critical-data-loss
+```
+
+**3. Make Changes**
+- Write tests if applicable
+- Ensure code follows existing patterns
+- Test thoroughly
+
+**4. Commit with Issue Reference**
+Use conventional commit format with issue link:
+```bash
+# Format: type: description (fixes #issue-number)
+git commit -m "fix: handle taskwarrior command success correctly (fixes #1)"
+git commit -m "fix: prevent auth redirect loop (fixes #2)"
+git commit -m "docs: update deployment guide (closes #3)"
+```
+
+**Commit types:**
+- `fix:` - Bug fixes
+- `feat:` - New features
+- `docs:` - Documentation only
+- `refactor:` - Code restructuring
+- `test:` - Adding/updating tests
+- `chore:` - Maintenance tasks
+
+**5. Push and Create PR**
+```bash
+git push origin bug/1-command-input-error-handling
+
+# Create PR via CLI
+gh pr create --title "Fix command input error handling" --body "Fixes #1
+
+- Updated API response handling
+- Added proper success detection
+- Added error logging for debugging"
+```
+
+**6. Merge**
+- Issue automatically closes when PR with "fixes #issue-number" merges
+- Branch can be deleted after merge
+
+### Issue Lifecycle
+
+```
+Open → In Progress → PR Created → Under Review → Merged → Closed
+  ↓         ↓            ↓             ↓           ↓        ↓
+Created   Branch     PR linked    Code review   Merged   Auto-closed
+         created
+```
+
+### Finding Issues to Work On
+
+```bash
+# List all open issues
+gh issue list
+
+# List bugs only
+gh issue list --label "bug"
+
+# List high priority issues
+gh issue list --label "P1"
+
+# View specific issue
+gh issue view 1
+```
+
+### Best Practices
+
+**For AI Agents:**
+- Always check if issue exists before creating duplicate
+- Include file paths and line numbers when possible
+- Reference related issues if bug is similar to existing ones
+- Add reproduction steps that are easy to follow
+- Include actual error messages/logs
+
+**For Developers:**
+- Keep issues focused on single problem
+- Update issue with findings during investigation
+- Close issues only when fix is deployed and verified
+- Reference commits/PRs in issue comments
+
+---
+
 ## Version History
 
 - **Current:** Main branch with triple-layer auth protection
