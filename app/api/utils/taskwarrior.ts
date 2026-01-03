@@ -32,8 +32,15 @@ async function execWithRetry(command: string, options: any, retries = 0): Promis
     }
     return stdout || stderr;
   } catch (error: any) {
-    if (error.stderr?.includes('database is locked') && retries < MAX_RETRIES) {
-      console.log(`Database locked, retrying in ${RETRY_DELAY}ms... (attempt ${retries + 1}/${MAX_RETRIES})`);
+    const errorStr = error.stderr || error.message || '';
+    const shouldRetry = (
+      errorStr.includes('database is locked') ||
+      errorStr.includes('UNIQUE constraint failed') ||
+      errorStr.includes('working_set.id')
+    ) && retries < MAX_RETRIES;
+    
+    if (shouldRetry) {
+      console.log(`Database error, retrying in ${RETRY_DELAY}ms... (attempt ${retries + 1}/${MAX_RETRIES})`);
       await sleep(RETRY_DELAY);
       return execWithRetry(command, options, retries + 1);
     }

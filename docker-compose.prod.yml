@@ -1,0 +1,26 @@
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+      - TASKDATA=/root/.task
+      - TASKRC=/root/.taskrc
+    volumes:
+      # Mount the entire .task directory with read-write access
+      - type: bind
+        source: ${HOME}/.task
+        target: /root/.task
+      # Mount taskrc as read-only
+      - type: bind
+        source: ${HOME}/.taskrc
+        target: /root/.taskrc
+        read_only: true
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_ADMIN
+    restart: unless-stopped

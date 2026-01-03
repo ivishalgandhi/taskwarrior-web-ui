@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { DataTableColumnHeader } from "@/components/data-table-column-header";
 import { FolderIcon } from "@/components/icons/folder-icon";
 import { CommandInput } from "@/components/command-input";
-import { CalendarView } from '@/components/calendar-view';
+import Calendar from '@/components/calendar-new/calendar';
+import { Mode } from '@/components/calendar-new/calendar-types';
 import { DataTableRowActions } from "@/components/data-table-row-actions";
 import { DataTableToolbar } from "@/components/data-table-toolbar"; 
 import { Input } from "@/components/ui/input"; 
@@ -32,6 +33,8 @@ export default function TasksPage() {
   const [projects, setProjects] = useState<ProjectNode[]>([]);
   const [projectOptions, setProjectOptions] = useState([]);
   const [view, setView] = useState<'list' | 'calendar'>('list');
+  const [calendarMode, setCalendarMode] = useState<Mode>('month');
+  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
 
   // Define the status and priority options
   const statuses = [
@@ -74,6 +77,20 @@ export default function TasksPage() {
 
   const columns: ColumnDef<Task>[] = [
     {
+      accessorKey: "id",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="ID" />
+      ),
+      cell: ({ row }) => {
+        return (
+          <div className="w-[50px] font-mono text-sm">
+            {row.getValue("id")}
+          </div>
+        )
+      },
+      size: 50,
+    },
+    {
       accessorKey: "description",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Description" />
@@ -81,12 +98,13 @@ export default function TasksPage() {
       cell: ({ row }) => {
         return (
           <div className="flex space-x-2">
-            <span className="max-w-[500px] truncate font-medium">
+            <span className="max-w-[300px] lg:max-w-[500px] truncate font-medium">
               {row.getValue("description")}
             </span>
           </div>
         )
       },
+      size: 300,
     },
     {
       accessorKey: "status",
@@ -103,11 +121,15 @@ export default function TasksPage() {
                   AlertCircle;
 
         return (
-          <div className="flex items-center">
+          <div className="flex items-center w-[110px]">
             <StatusIcon className="mr-2 h-4 w-4 text-muted-foreground" />
             <span className="capitalize">{status}</span>
           </div>
         );
+      },
+      size: 110,
+      meta: {
+        className: "w-[110px]",
       },
       filterFn: (row, id, value) => {
         const status: string = row.getValue(id)
@@ -124,8 +146,9 @@ export default function TasksPage() {
         <DataTableColumnHeader column={column} title="Priority" />
       ),
       cell: ({ row }) => {
-        return <div className="w-[100px]">{row.getValue("priority")}</div>
+        return <div className="w-[80px]">{row.getValue("priority")}</div>
       },
+      size: 80,
       filterFn: (row, id, value) => {
         const priority: string | undefined = row.getValue(id)
         if (!value || (Array.isArray(value) && value.length === 0)) return true
@@ -143,8 +166,9 @@ export default function TasksPage() {
         <DataTableColumnHeader column={column} title="Project" />
       ),
       cell: ({ row }) => {
-        return <div className="w-[200px] truncate">{row.getValue("project")}</div>
+        return <div className="max-w-[150px] lg:max-w-[200px] truncate">{row.getValue("project")}</div>
       },
+      size: 150,
       filterFn: (row, id, value) => {
         const project: string | undefined = row.getValue(id)
         // If we're filtering by project and the task has no project, exclude it
@@ -171,7 +195,7 @@ export default function TasksPage() {
       cell: ({ row }) => {
         const tags: string[] = row.getValue("tags") || []
         return (
-          <div className="flex flex-wrap gap-1 w-[200px]">
+          <div className="flex flex-wrap gap-1 max-w-[150px] lg:max-w-[200px]">
             {tags.map((tag) => (
               <span
                 key={tag}
@@ -203,11 +227,12 @@ export default function TasksPage() {
       ),
       cell: ({ row }) => {
         return (
-          <div className="w-[100px]">
-            {Number(row.getValue("urgency")).toFixed(2)}
+          <div className="w-[70px]">
+            {Number(row.getValue("urgency")).toFixed(1)}
           </div>
         )
       },
+      size: 70,
     },
     {
       accessorKey: "due",
@@ -328,24 +353,31 @@ export default function TasksPage() {
       pagination: {
         pageSize: 50,
       },
+      sorting: [
+        {
+          id: "urgency",
+          desc: true,
+        },
+      ],
     },
   });
 
   const isFiltered = table.getState().columnFilters.length > 0;
 
   // Recursive function to flatten project hierarchy
-  const flattenProjects = (nodes: ProjectNode[]): { value: string; label: string; tasks: number }[] => {
+  const flattenProjects = (nodes: ProjectNode[], prefix = ''): { value: string; label: string; tasks: number }[] => {
     let options: { value: string; label: string; tasks: number }[] = [];
     
     nodes.forEach(node => {
+      const fullPath = prefix ? `${prefix}.${node.name}` : node.name;
       options.push({
-        value: node.name,
-        label: node.name, // This will now be the full path (e.g., "work.inbox")
+        value: fullPath,
+        label: fullPath,
         tasks: node.count
       });
       
-      if (node.children && Object.keys(node.children).length > 0) {
-        options = options.concat(flattenProjects(Object.values(node.children)));
+      if (node.children && node.children.length > 0) {
+        options = options.concat(flattenProjects(node.children, fullPath));
       }
     });
     
@@ -366,7 +398,7 @@ export default function TasksPage() {
     const nonDeletedTasks = tasks.filter(task => task.status !== 'deleted');
     
     return nonDeletedTasks.filter(task => {
-      const filters = table.getState().columnFilters;
+      const filters = columnFilters;
       return filters.every(filter => {
         const column = filter.id;
         const value = filter.value;
@@ -409,7 +441,7 @@ export default function TasksPage() {
         }
       });
     });
-  }, [tasks, table]);
+  }, [tasks, columnFilters]);
 
   const fetchProjects = async () => {
     try {
@@ -496,14 +528,6 @@ export default function TasksPage() {
     fetchProjects();
   }, []);
 
-  useEffect(() => {
-    // Update calendar view when filters change
-    if (view === 'calendar') {
-      // Force calendar view to update with new filtered tasks
-      setView('calendar');
-    }
-  }, [filteredTasks]);
-
   const handleTaskUpdate = () => {
     fetchTasks();
     fetchProjects();
@@ -515,7 +539,7 @@ export default function TasksPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      <div className="container mx-auto py-4 flex-none">
+      <div className="w-full px-4 lg:px-8 py-4 flex-none">
         <div className="mb-4">
           <CommandInput onCommandExecuted={() => {
             fetchTasks()
@@ -596,27 +620,14 @@ export default function TasksPage() {
             <Button
               variant={view === 'calendar' ? 'secondary' : 'ghost'}
               className="text-sm"
-              onClick={() => {
-                // Get current status filters
-                const statusFilter = columnFilters.find(filter => filter.id === 'status');
-                const statusValues = statusFilter?.value as string[] | undefined;
-                
-                // Build the URL with current filters
-                const params = new URLSearchParams();
-                if (statusValues?.length) {
-                  params.set('status', statusValues.join(','));
-                }
-                
-                // Navigate to calendar page with filters
-                window.location.href = `/calendar?${params.toString()}`;
-              }}
+              onClick={() => setView('calendar')}
             >
               Calendar View
             </Button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-hidden px-4">
+        <div className="flex-1 overflow-hidden">
           {view === 'list' ? (
             <div className="h-full">
               <DataTable 
@@ -627,17 +638,17 @@ export default function TasksPage() {
               />
             </div>
           ) : (
-            <CalendarView 
-              tasks={filteredTasks} 
-              onTaskUpdate={handleTaskUpdate} 
-              tableFilters={{
-                status: table.getColumn('status')?.getFilterValue(),
-                priority: table.getColumn('priority')?.getFilterValue(),
-                project: table.getColumn('project')?.getFilterValue(),
-                description: table.getColumn('description')?.getFilterValue(),
-                tags: table.getColumn('tags')?.getFilterValue(),
-              }}
-            />
+            <div className="h-full">
+              <Calendar
+                tasks={filteredTasks}
+                setTasks={setTasks}
+                mode={calendarMode}
+                setMode={setCalendarMode}
+                date={calendarDate}
+                setDate={setCalendarDate}
+                onTaskUpdate={handleTaskUpdate}
+              />
+            </div>
           )}
         </div>
       </div>

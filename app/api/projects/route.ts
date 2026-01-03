@@ -3,13 +3,19 @@ import { execRawTask } from '../utils/taskwarrior';
 
 interface ProjectNode {
   name: string;
+  count: number;
+  children: ProjectNode[];
+}
+
+interface ProjectNodeInternal {
+  name: string;
   fullPath: string;
   tasks: number;
-  children: { [key: string]: ProjectNode };
+  children: { [key: string]: ProjectNodeInternal };
 }
 
 function buildProjectTree(projects: { project: string; count: number }[]): ProjectNode[] {
-  const root: { [key: string]: ProjectNode } = {};
+  const root: { [key: string]: ProjectNodeInternal } = {};
 
   // Handle empty project list
   if (!projects.length) {
@@ -29,7 +35,7 @@ function buildProjectTree(projects: { project: string; count: number }[]): Proje
 
       if (!current[part]) {
         current[part] = {
-          name: currentPath, // Use full path as name
+          name: part, // Use just the part name, not full path
           fullPath: currentPath,
           tasks: 0,
           children: {}
@@ -46,7 +52,7 @@ function buildProjectTree(projects: { project: string; count: number }[]): Proje
   });
 
   // Second pass: aggregate counts up the tree
-  function aggregateCounts(node: ProjectNode): number {
+  function aggregateCounts(node: ProjectNodeInternal): number {
     let total = node.tasks;
     for (const child of Object.values(node.children)) {
       total += aggregateCounts(child);
@@ -55,12 +61,21 @@ function buildProjectTree(projects: { project: string; count: number }[]): Proje
     return total;
   }
 
+  // Convert internal structure to external structure
+  function convertToExternal(internalNode: ProjectNodeInternal): ProjectNode {
+    return {
+      name: internalNode.name,
+      count: internalNode.tasks,
+      children: Object.values(internalNode.children).map(convertToExternal)
+    };
+  }
+
   // Aggregate counts for each root node
   Object.values(root).forEach(node => {
     aggregateCounts(node);
   });
 
-  return Object.values(root);
+  return Object.values(root).map(convertToExternal);
 }
 
 export async function GET() {

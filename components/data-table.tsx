@@ -45,10 +45,10 @@ export function DataTable<TData, TValue>({
   onTaskUpdate,
 }: DataTableProps<TData, TValue>) {
   return (
-    <div className="w-full h-[calc(100vh-10rem)] flex flex-col">
+    <div className="w-full h-[calc(100vh-12rem)] flex flex-col">
       <div className="flex-1 rounded-md border overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-auto">
-          <Table className="relative">
+        <div className="flex-1 overflow-auto relative">
+          <Table className="w-full">
             <TableHeader className="sticky top-0 bg-background z-10">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>

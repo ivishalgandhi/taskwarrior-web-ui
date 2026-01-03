@@ -7,13 +7,16 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (including dev dependencies for build)
+RUN npm ci
 
 # Copy the rest of the application
 COPY . .
 
-# Final stage
+# Build the Next.js application
+RUN npm run build
+
+# Production stage
 FROM node:20-bullseye-slim
 
 # Install taskwarrior
@@ -24,17 +27,24 @@ RUN apt-get update && \
     mkdir -p /root/.task
 
 # Set environment variables
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Set working directory
 WORKDIR /app
 
-# Copy from builder stage
-COPY --from=builder /app ./
+# Copy package files and install production dependencies only
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy built application from builder
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.ts ./
+COPY --from=builder /app/package.json ./
 
 # Expose port
 EXPOSE 3000
 
-# Set default command
-CMD ["npm", "run", "dev"]
+# Set default command to production start
+CMD ["npm", "start"]

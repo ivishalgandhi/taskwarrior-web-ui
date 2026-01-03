@@ -36,7 +36,7 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] p-4">
+    <div className="h-[calc(100vh-3.5rem)] p-4">
       <Calendar
         tasks={tasks}
         setTasks={setTasks}
