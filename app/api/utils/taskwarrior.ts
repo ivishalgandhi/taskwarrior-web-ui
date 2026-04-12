@@ -1,9 +1,12 @@
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import path from 'path';
 import os from 'os';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
+
+// Secure execution using execFile (no shell)
+const execFileAsync = promisify(execFile);
 
 let isLocked = false;
 const queue: (() => void)[] = [];
@@ -107,9 +110,9 @@ export const execRawTask = async (cmd: string): Promise<string> => {
   try {
     const escapedCmd = cmd.replace(/"/g, '\\"');
     const fullCmd = `task ${escapedCmd}`;
-    
+
     console.log('Executing raw task command:', fullCmd);
-    
+
     const result = await execWithRetry(fullCmd, {
       env: {
         ...process.env,
@@ -122,5 +125,28 @@ export const execRawTask = async (cmd: string): Promise<string> => {
   } catch (error) {
     console.error('Raw task command error:', error);
     return '';
+  }
+};
+
+// Secure execution - uses execFile instead of exec to avoid shell injection
+export const execTaskSecure = async (args: string[]): Promise<string> => {
+  try {
+    const { stdout, stderr } = await execFileAsync('task', args, {
+      env: {
+        ...process.env,
+        PATH: process.env.PATH
+      },
+      timeout: 5000
+    });
+
+    if (stderr && !stdout) {
+      console.error('Command stderr:', stderr);
+      throw new Error(stderr);
+    }
+
+    return stdout || '';
+  } catch (error) {
+    console.error('Secure task command error:', error);
+    throw error;
   }
 };
